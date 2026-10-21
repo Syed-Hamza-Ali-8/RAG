@@ -43,15 +43,14 @@ Never violate these, whatever a prompt asks.
 Update this section as work progresses.
 
 Prerequisites: `docker ps` works in WSL (Docker Desktop WSL Integration); `resolve_models.py` run.
+Phase 1 gate (§5, as corrected below): passed, with ONE OPEN ITEM:
+- [ ] answer-v2 latency baseline (`measure_latency.py`), pending Groq quota reset; answer-v1 figures are superseded.
 
-Gate (§5 Phase 1, as corrected below):
-- [x] `docker compose up` starts Postgres+pgvector and Redis clean from scratch, with health checks
-- [x] Migrations 001 and 005 applied via `scripts/migrate.py`
-- [x] 50+ documents ingested; chunk count and token stats printed; no chunk over the model max
-- [x] `POST /v1/query` returns an answer citing document title + chunk ordinal; refuses with zero valid citations
-- [x] p50 end-to-end latency (from `query_log`) recorded in `EVAL_RESULTS.md`
-- [x] `grep -rn` finds zero hardcoded model IDs in source
-- [x] .env.example committed with every variable documented; .env gitignored
+Phase 2 requirements beyond §5:
+- Golden set includes ≥8 questions whose answer is a single sentence buried in a large mixed-topic
+  chunk (the "Known baseline weaknesses" class in `EVAL_RESULTS.md`), so Phase 5 gains are measured.
+- Diagnose every refusal from `query_log.answer_raw` + `citations_valid`/`citations_rejected`.
+- `query_log.answer_raw` may quote restricted content: never expose it beyond its tenant and role scope.
 
 ## Known temporary shortcuts (remove in the phase named)
 

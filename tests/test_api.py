@@ -11,7 +11,7 @@ import pytest
 from gateway.config import Settings
 from gateway.ingest.embedder import Embedder
 from gateway.ingest.pipeline import ingest_document
-from gateway.llm.prompts import REFUSAL_MESSAGE
+from gateway.llm.prompts import PROMPT_VERSION, REFUSAL_MESSAGE
 from gateway.main import create_app
 from tests.conftest import StubLLM
 
@@ -100,6 +100,9 @@ async def test_answer_has_citation_with_title_and_ordinal(
     assert row["route_tier"] == "small"
     assert row["total_ms"] >= row["retrieval_ms"] >= 0
     assert row["cache_hit"] is None and row["est_cost_usd"] is None and row["complexity_score"] is None
+    assert row["answer_raw"] == "Answer [S1]."
+    assert row["prompt_version"] == PROMPT_VERSION
+    assert (row["citations_valid"], row["citations_rejected"]) == (1, 0)
 
 
 async def test_retrieval_is_tenant_scoped(client: httpx.AsyncClient, stub_llm: StubLLM) -> None:
@@ -119,13 +122,36 @@ async def test_zero_valid_citations_is_refused(
     assert body["refused"] is True
     assert body["answer"] == REFUSAL_MESSAGE
     assert body["citations"] == []
-    assert (await query_log_rows(pool, seeded["alpha"]))[-1]["refused"] is True
+    row = (await query_log_rows(pool, seeded["alpha"]))[-1]
+    assert row["refused"] is True
+    assert row["answer_raw"] == "Everyone gets 40 days [S9]."  # the rejected output is kept for diagnosis
+    assert (row["citations_valid"], row["citations_rejected"]) == (0, 1)
 
 
-async def test_empty_tenant_refuses_without_calling_llm(client: httpx.AsyncClient, stub_llm: StubLLM) -> None:
+async def test_lenticular_citation_is_accepted_and_normalised(
+    client: httpx.AsyncClient, stub_llm: StubLLM, pool: asyncpg.Pool, seeded: dict[str, UUID]
+) -> None:
+    raw = "Full-time employees receive **22 working days**【S1】"
+    stub_llm.reply = lambda _: raw
+    r = await client.post("/v1/query", json={"tenant": "alpha", "question": "How much annual leave?"})
+    body = r.json()
+    assert body["refused"] is False
+    assert body["answer"] == "Full-time employees receive **22 working days**[S1]"
+    assert [c["label"] for c in body["citations"]] == ["S1"]
+    row = (await query_log_rows(pool, seeded["alpha"]))[-1]
+    assert row["answer_raw"] == raw  # stored exactly as the model wrote it
+    assert (row["citations_valid"], row["citations_rejected"]) == (1, 0)
+
+
+async def test_empty_tenant_refuses_without_calling_llm(
+    client: httpx.AsyncClient, stub_llm: StubLLM, pool: asyncpg.Pool, seeded: dict[str, UUID]
+) -> None:
     r = await client.post("/v1/query", json={"tenant": "empty", "question": "Anything?"})
     assert r.json()["refused"] is True
     assert stub_llm.calls == []
+    row = (await query_log_rows(pool, seeded["empty"]))[-1]
+    assert row["answer_raw"] is None and row["citations_valid"] is None and row["citations_rejected"] is None
+    assert row["prompt_version"] is None  # no LLM call, so no prompt was used
 
 
 async def test_unknown_tenant_is_404(client: httpx.AsyncClient) -> None:

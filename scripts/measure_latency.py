@@ -108,8 +108,8 @@ async def run(delay_ms: int, rounds: int) -> None:
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT total_ms, retrieval_ms, llm_ms, refused, model_used FROM query_log "
-            "WHERE id > $1 ORDER BY id",
+            "SELECT id, total_ms, retrieval_ms, llm_ms, refused, model_used, prompt_version "
+            "FROM query_log WHERE id > $1 ORDER BY id",
             start_id,
         )
     await pool.close()
@@ -117,6 +117,17 @@ async def run(delay_ms: int, rounds: int) -> None:
         sys.exit("requests failed; no measurement recorded:\n" + "\n".join(failures))
     if len(rows) != len(retries_per_request):
         sys.exit(f"expected {len(retries_per_request)} query_log rows, found {len(rows)}")
+
+    # Runs under different prompt versions are not comparable; refuse to mix them.
+    versions = {r["prompt_version"] for r in rows if r["prompt_version"] is not None}
+    if versions != {PROMPT_VERSION}:
+        sys.exit(f"query_log prompt_version(s) {sorted(versions)} != current {PROMPT_VERSION!r}")
+    asked = [q for _ in range(rounds) for q in QUESTIONS]
+    refused_questions = [
+        f"  - [{tenant}] {question} (query_log id {row['id']})"
+        for row, (tenant, question) in zip(rows, asked, strict=True)
+        if row["refused"]
+    ]
 
     clean = [row for row, n in zip(rows, retries_per_request, strict=True) if n == 0]
     retried = len(rows) - len(clean)
@@ -154,8 +165,10 @@ async def run(delay_ms: int, rounds: int) -> None:
             f"- Queries: {len(rows)} ({len(QUESTIONS)} questions x {rounds} round(s), 1 warm-up excluded), "
             f"{delay_ms} ms delay between requests (EVAL_REQUEST_DELAY_MS) for free-tier rate limits",
             f"- Tier: `{settings.llm_tier}`; model(s): {', '.join(f'`{m}`' for m in models)}",
-            f"- Retrieval: vector-only, top_k={settings.retrieval_top_k}; prompt `{PROMPT_VERSION}`",
+            f"- **Prompt version: `{PROMPT_VERSION}`** (read from `query_log.prompt_version` for every row)",
+            f"- Retrieval: vector-only, top_k={settings.retrieval_top_k}",
             f"- Refused (zero valid citations): {refused}/{len(rows)} (not a quality metric; see Phase 2)",
+            *refused_questions,
             f"- Requests that hit a 429 retry: {retried}/{len(rows)}",
             "- Environment: in-process ASGI on WSL2, repo on /mnt/d, Postgres in Docker Desktop",
             "",

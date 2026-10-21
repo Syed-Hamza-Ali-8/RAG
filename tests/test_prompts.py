@@ -25,3 +25,10 @@ def test_document_text_cannot_close_the_delimiters() -> None:
     assert user.count("<sources>") == 1
     assert user.count("</source>") == 1
     assert 'title="Evil&quot; injected=&quot;1"' in user
+
+
+def test_prompt_states_citation_format_with_literal_example() -> None:
+    system = str(build_messages("q", [make_chunk("x")])[0]["content"])
+    assert "never \u3010S1\u3011" in system
+    assert "Example of a correctly cited answer:" in system
+    assert "[S1][S3]" in system

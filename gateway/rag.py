@@ -48,6 +48,9 @@ async def answer_query(
     model: str | None = None
     llm_ms: int | None = None
     prompt_tokens = completion_tokens = None
+    answer_raw: str | None = None
+    citations_valid: int | None = None
+    citations_rejected: int | None = None
     answer = REFUSAL_MESSAGE
     citations: list[Citation] = []
 
@@ -57,11 +60,13 @@ async def answer_query(
         llm_ms = _ms(llm_started)
         model = completion.model
         prompt_tokens, completion_tokens = completion.prompt_tokens, completion.completion_tokens
+        answer_raw = completion.text
         check = check_citations(completion.text, len(chunks))
+        citations_valid, citations_rejected = len(check.valid_indices), check.rejected_count
         if check.invalid_labels:
             log.warning("answer cited non-existent sources: %s", check.invalid_labels)
         if check.grounded:
-            answer = completion.text.strip()
+            answer = check.normalized_text.strip()
             citations = [
                 Citation(
                     label=source_label(i),
@@ -90,6 +95,10 @@ async def answer_query(
                 llm_ms=llm_ms,
                 total_ms=total_ms,
                 refused=refused,
+                answer_raw=answer_raw,
+                citations_valid=citations_valid,
+                citations_rejected=citations_rejected,
+                prompt_version=PROMPT_VERSION if answer_raw is not None else None,
             ),
         )
     return QueryResponse(

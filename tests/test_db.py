@@ -13,7 +13,7 @@ async def test_all_migrations_applied_and_rerun_is_noop(pool: asyncpg.Pool) -> N
             r["version"] for r in await conn.fetch("SELECT version FROM schema_migrations ORDER BY 1")
         ]
     assert versions == [p.stem for p in migration_files()]
-    assert versions == ["001_init", "005_metrics"]
+    assert versions == ["001_init", "005_metrics", "006_query_log_answer", "007_query_log_prompt_version"]
 
 
 async def test_phase1_tables_exist_and_later_phase_tables_do_not(pool: asyncpg.Pool) -> None:
