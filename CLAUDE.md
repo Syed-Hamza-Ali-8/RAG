@@ -115,8 +115,8 @@ This describes the END STATE. Phase 1 builds steps 4 (vector retrieval only), 5,
 
 ## Environment notes
 
-- The repo sits on `/mnt/d` (Windows filesystem via WSL). File I/O is slow, and Docker
-  bind mounts perform badly. Prefer named volumes for Postgres data and the model cache.
+- Repo is on `/mnt/d` (Windows FS via WSL): slow file I/O and bind mounts; prefer named volumes.
+- ~3.8 GB RAM shared with other stacks; stop unrelated containers before eval runs.
 - fastembed downloads ONNX weights on first run. Cache them in a volume; never commit binaries.
 
 ## Spec corrections (these override the spec text)

@@ -58,7 +58,34 @@ def test_overlap_disabled() -> None:
     assert joined == " ".join(sentences(40))
 
 
-def test_small_sibling_sections_merge_keeping_first_heading_path() -> None:
+def test_merged_chunk_takes_deepest_common_prefix_and_keeps_subheadings_inline() -> None:
+    chunks = chunk(
+        [
+            Section(("Leave Policy", "Scope"), "All staff."),
+            Section(("Leave Policy", "Annual Leave"), "Twenty two days."),
+            Section(("Leave Policy", "Sick Leave"), "Ten days."),
+        ]
+    )
+    (only,) = chunks
+    assert only.heading_path == "Leave Policy"
+    assert only.content == (
+        "Scope\n\nAll staff.\n\nAnnual Leave\n\nTwenty two days.\n\nSick Leave\n\nTen days."
+    )
+    assert only.embed_text.startswith("Leave Policy\n\nScope\n\n")
+
+
+def test_common_prefix_can_be_deeper_than_top_level() -> None:
+    (only,) = chunk(
+        [
+            Section(("Policy", "Annual", "Accrual"), "Monthly."),
+            Section(("Policy", "Annual", "Carryover"), "Five days."),
+        ]
+    )
+    assert only.heading_path == "Policy > Annual"
+    assert only.content == "Accrual\n\nMonthly.\n\nCarryover\n\nFive days."
+
+
+def test_small_sibling_sections_merge_under_parent_heading() -> None:
     chunks = chunk(
         [
             Section(("Policy",), "Intro text."),
@@ -87,7 +114,8 @@ def test_merge_stops_before_exceeding_target() -> None:
     chunks = chunk(sections, overlap_tokens=0)
     assert 1 < len(chunks) < 6
     assert all(c.token_count <= 60 for c in chunks)
-    assert chunks[0].heading_path == "Doc > S0"
+    assert chunks[0].heading_path == "Doc"
+    assert chunks[0].content.startswith("S0\n\n")
     assert sum(c.content.count("end1.") for c in chunks) == 6  # no text lost or duplicated
 
 

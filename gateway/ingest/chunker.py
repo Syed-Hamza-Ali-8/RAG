@@ -91,37 +91,50 @@ def _force_split(unit: _Unit, budget: int, counter: TokenCounter) -> list[_Unit]
     return [_Unit(pieces[0].text, unit.joiner, pieces[0].tokens), *pieces[1:]]
 
 
-def _relative_heading(path: tuple[str, ...], anchor: tuple[str, ...]) -> str:
-    """`path` with the prefix it shares with `anchor` removed, e.g. "Annual Leave > Carryover"."""
-    common = 0
-    while common < min(len(path), len(anchor)) and path[common] == anchor[common]:
-        common += 1
-    return HEADING_SEP.join(path[common:])
+def _common_prefix(paths: Iterable[tuple[str, ...]]) -> tuple[str, ...]:
+    prefix: tuple[str, ...] | None = None
+    for path in paths:
+        if prefix is None:
+            prefix = path
+            continue
+        n = 0
+        while n < min(len(prefix), len(path)) and prefix[n] == path[n]:
+            n += 1
+        prefix = prefix[:n]
+    return prefix or ()
+
+
+def _render_group(group: list[Section]) -> Section:
+    """One section for `group`: heading path is the members' deepest common prefix; each
+    member's remaining sub-heading is kept inline above its text."""
+    if len(group) == 1:
+        return group[0]
+    prefix = _common_prefix(s.heading_path for s in group)
+    parts = []
+    for s in group:
+        inline = HEADING_SEP.join(s.heading_path[len(prefix) :])
+        parts.append(f"{inline}\n\n{s.text}" if inline else s.text)
+    return Section(prefix, "\n\n".join(parts))
 
 
 def merge_sections(
     sections: Iterable[Section], counter: TokenCounter, *, target_tokens: int
 ) -> list[Section]:
     """Packing pass: merge consecutive sections under the same top-level heading while the
-    merged embed text stays within `target_tokens`. The merged section keeps the first
-    section's heading path; each later section's heading is kept inline (relative to that
-    path) so the content does not lose its sub-headings. Sections already over the target
-    are never merged; they are split by the sentence packer instead."""
-    merged: list[Section] = []
+    merged embed text stays within `target_tokens`. A merged section's heading path is the
+    deepest common prefix of its members, with each member's sub-heading kept inline so the
+    content does not lose it. Sections already over the target are never merged; they are
+    split by the sentence packer instead."""
+    groups: list[list[Section]] = []
     for section in sections:
-        if merged:
-            prev = merged[-1]
-            same_top = prev.heading_path[:1] == section.heading_path[:1]
-            if same_top and section.heading_path[:1]:
-                inline = _relative_heading(section.heading_path, prev.heading_path)
-                body = f"{inline}\n\n{section.text}" if inline else section.text
-                text = f"{prev.text}\n\n{body}"
-                heading = HEADING_SEP.join(prev.heading_path) or None
-                if counter.count_tokens(build_embed_text(heading, text)) <= target_tokens:
-                    merged[-1] = Section(prev.heading_path, text)
-                    continue
-        merged.append(section)
-    return merged
+        if groups and section.heading_path[:1] and groups[-1][0].heading_path[:1] == section.heading_path[:1]:
+            candidate = _render_group([*groups[-1], section])
+            heading = HEADING_SEP.join(candidate.heading_path) or None
+            if counter.count_tokens(build_embed_text(heading, candidate.text)) <= target_tokens:
+                groups[-1].append(section)
+                continue
+        groups.append([section])
+    return [_render_group(g) for g in groups]
 
 
 def chunk_sections(
