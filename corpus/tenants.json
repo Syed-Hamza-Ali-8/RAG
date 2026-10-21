@@ -1,0 +1,37 @@
+{
+  "folders": {
+    "public":  { "allowed_roles": [],              "min_clearance": 0 },
+    "hr":      { "allowed_roles": ["hr"],          "min_clearance": 2 },
+    "eng":     { "allowed_roles": ["engineering"], "min_clearance": 0 },
+    "legal":   { "allowed_roles": ["legal"],       "min_clearance": 3 },
+    "finance": { "allowed_roles": ["finance"],     "min_clearance": 2 }
+  },
+  "tenants": [
+    {
+      "slug": "acme",
+      "name": "Acme Advisory Group",
+      "users": [
+        { "email": "intern@acme.example",      "roles": ["employee"],                 "clearance": 0 },
+        { "email": "employee@acme.example",    "roles": ["employee"],                 "clearance": 1 },
+        { "email": "hr@acme.example",          "roles": ["employee", "hr"],           "clearance": 2 },
+        { "email": "engineer@acme.example",    "roles": ["employee", "engineering"],  "clearance": 1 },
+        { "email": "legal@acme.example",       "roles": ["employee", "legal"],        "clearance": 3 },
+        { "email": "finance@acme.example",     "roles": ["employee", "finance"],      "clearance": 2 },
+        { "email": "admin@acme.example",       "roles": ["employee", "admin"],        "clearance": 3 }
+      ]
+    },
+    {
+      "slug": "globex",
+      "name": "Globex Partners LLP",
+      "users": [
+        { "email": "intern@globex.example",    "roles": ["employee"],                 "clearance": 0 },
+        { "email": "employee@globex.example",  "roles": ["employee"],                 "clearance": 1 },
+        { "email": "hr@globex.example",        "roles": ["employee", "hr"],           "clearance": 2 },
+        { "email": "engineer@globex.example",  "roles": ["employee", "engineering"],  "clearance": 1 },
+        { "email": "legal@globex.example",     "roles": ["employee", "legal"],        "clearance": 3 },
+        { "email": "finance@globex.example",   "roles": ["employee", "finance"],      "clearance": 2 },
+        { "email": "admin@globex.example",     "roles": ["employee", "admin"],        "clearance": 3 }
+      ]
+    }
+  ]
+}
