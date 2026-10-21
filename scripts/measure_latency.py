@@ -7,11 +7,13 @@ This measures latency only. Answer quality is Phase 2's eval harness (eval/run_e
 
 import argparse
 import asyncio
+import logging
 import statistics
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import asyncpg
 import httpx
 
 from gateway.config import get_settings
@@ -47,17 +49,47 @@ QUESTIONS: list[tuple[str, str]] = [
 ]
 
 
+class RetryCounter(logging.Handler):
+    """Counts 429/5xx retry warnings from gateway.llm.retry. Requests run sequentially, so the
+    count delta across one request is that request's retry count."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.count = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.count += 1
+
+
 def pct(values: list[int], p: float) -> int:
     ordered = sorted(values)
     k = max(0, min(len(ordered) - 1, round(p / 100 * (len(ordered) - 1))))
     return ordered[k]
 
 
-async def run(delay_s: float, rounds: int) -> None:
+def stats_table(rows: list[asyncpg.Record]) -> list[str]:
+    total = [r["total_ms"] for r in rows]
+    retrieval = [r["retrieval_ms"] for r in rows]
+    llm = [r["llm_ms"] for r in rows if r["llm_ms"] is not None]
+    return [
+        "| Metric | p50 (ms) | p95 (ms) | mean (ms) |",
+        "|---|---|---|---|",
+        f"| End-to-end (total_ms) | {pct(total, 50)} | {pct(total, 95)} | {statistics.mean(total):.0f} |",
+        f"| Retrieval (embed + vector search) | {pct(retrieval, 50)} | {pct(retrieval, 95)} "
+        f"| {statistics.mean(retrieval):.0f} |",
+        f"| LLM call | {pct(llm, 50)} | {pct(llm, 95)} | {statistics.mean(llm):.0f} |",
+    ]
+
+
+async def run(delay_ms: int, rounds: int) -> None:
     settings = get_settings()
+    delay_s = delay_ms / 1000
     pool = await create_pool(settings.database_dsn)
     app = create_app(settings)
     failures: list[str] = []
+    retries_per_request: list[int] = []
+    counter = RetryCounter()
+    logging.getLogger("gateway.llm.retry").addHandler(counter)
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://bench", timeout=180) as client:
@@ -67,7 +99,9 @@ async def run(delay_s: float, rounds: int) -> None:
                 start_id = await conn.fetchval("SELECT coalesce(max(id), 0) FROM query_log")
             for _ in range(rounds):
                 for tenant, question in QUESTIONS:
+                    before = counter.count
                     r = await client.post("/v1/query", json={"tenant": tenant, "question": question})
+                    retries_per_request.append(counter.count - before)
                     if r.status_code != 200:
                         failures.append(f"{r.status_code} {question}: {r.text[:200]}")
                     await asyncio.sleep(delay_s)
@@ -81,24 +115,35 @@ async def run(delay_s: float, rounds: int) -> None:
     await pool.close()
     if failures:
         sys.exit("requests failed; no measurement recorded:\n" + "\n".join(failures))
-    if not rows:
-        sys.exit("no query_log rows written")
+    if len(rows) != len(retries_per_request):
+        sys.exit(f"expected {len(retries_per_request)} query_log rows, found {len(rows)}")
 
-    total = [r["total_ms"] for r in rows]
-    retrieval = [r["retrieval_ms"] for r in rows]
-    llm = [r["llm_ms"] for r in rows if r["llm_ms"] is not None]
+    clean = [row for row, n in zip(rows, retries_per_request, strict=True) if n == 0]
+    retried = len(rows) - len(clean)
+    if not clean:
+        sys.exit("every request hit a 429 retry; raise --delay-ms and re-run")
     refused = sum(r["refused"] for r in rows)
     models = sorted({r["model_used"] for r in rows if r["model_used"]})
     stamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
-    table = [
-        "| Metric | p50 (ms) | p95 (ms) | mean (ms) |",
-        "|---|---|---|---|",
-        f"| End-to-end (total_ms) | {pct(total, 50)} | {pct(total, 95)} | {statistics.mean(total):.0f} |",
-        f"| Retrieval (embed + vector search) | {pct(retrieval, 50)} | {pct(retrieval, 95)} "
-        f"| {statistics.mean(retrieval):.0f} |",
-        f"| LLM call | {pct(llm, 50)} | {pct(llm, 95)} | {statistics.mean(llm):.0f} |",
-    ]
+    if retried == 0:
+        tables = [
+            "**Baseline — clean: no request hit a 429 retry, so no backoff wait is included.**",
+            "",
+            *stats_table(rows),
+        ]
+    else:
+        tables = [
+            f"**Baseline — excluding retried requests ({len(clean)} of {len(rows)}): "
+            "no 429 backoff wait included.**",
+            "",
+            *stats_table(clean),
+            "",
+            f"For reference only — all {len(rows)} requests, including {retried} that waited on "
+            f"429 backoff ({sum(retries_per_request)} retries). Not a baseline.",
+            "",
+            *stats_table(rows),
+        ]
     section = "\n".join(
         [
             SECTION,
@@ -107,13 +152,14 @@ async def run(delay_s: float, rounds: int) -> None:
             f"written by this run (ids > {start_id}).",
             "",
             f"- Queries: {len(rows)} ({len(QUESTIONS)} questions x {rounds} round(s), 1 warm-up excluded), "
-            f"{delay_s:.1f}s delay between requests for free-tier rate limits",
+            f"{delay_ms} ms delay between requests (EVAL_REQUEST_DELAY_MS) for free-tier rate limits",
             f"- Tier: `{settings.llm_tier}`; model(s): {', '.join(f'`{m}`' for m in models)}",
             f"- Retrieval: vector-only, top_k={settings.retrieval_top_k}; prompt `{PROMPT_VERSION}`",
             f"- Refused (zero valid citations): {refused}/{len(rows)} (not a quality metric; see Phase 2)",
+            f"- Requests that hit a 429 retry: {retried}/{len(rows)}",
             "- Environment: in-process ASGI on WSL2, repo on /mnt/d, Postgres in Docker Desktop",
             "",
-            *table,
+            *tables,
             "",
         ]
     )
@@ -131,10 +177,11 @@ async def run(delay_s: float, rounds: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--delay-s", type=float, default=2.0)
+    parser.add_argument("--delay-ms", type=int, help="default: EVAL_REQUEST_DELAY_MS from .env")
     parser.add_argument("--rounds", type=int, default=1)
     args = parser.parse_args()
-    asyncio.run(run(args.delay_s, args.rounds))
+    delay_ms = args.delay_ms if args.delay_ms is not None else get_settings().eval_request_delay_ms
+    asyncio.run(run(delay_ms, args.rounds))
 
 
 if __name__ == "__main__":

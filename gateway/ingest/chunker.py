@@ -1,4 +1,5 @@
-"""Structure-aware chunker: split on headings, then pack whole sentences to a token budget.
+"""Structure-aware chunker: split on headings, merge consecutive small sections under the same
+top-level heading up to the target, then pack whole sentences of oversize sections to a budget.
 
 Budgets are counted with the embedding model's own tokenizer and apply to the text the
 embedder actually sees: heading path + content + special tokens (CLAUDE.md correction I).
@@ -90,6 +91,39 @@ def _force_split(unit: _Unit, budget: int, counter: TokenCounter) -> list[_Unit]
     return [_Unit(pieces[0].text, unit.joiner, pieces[0].tokens), *pieces[1:]]
 
 
+def _relative_heading(path: tuple[str, ...], anchor: tuple[str, ...]) -> str:
+    """`path` with the prefix it shares with `anchor` removed, e.g. "Annual Leave > Carryover"."""
+    common = 0
+    while common < min(len(path), len(anchor)) and path[common] == anchor[common]:
+        common += 1
+    return HEADING_SEP.join(path[common:])
+
+
+def merge_sections(
+    sections: Iterable[Section], counter: TokenCounter, *, target_tokens: int
+) -> list[Section]:
+    """Packing pass: merge consecutive sections under the same top-level heading while the
+    merged embed text stays within `target_tokens`. The merged section keeps the first
+    section's heading path; each later section's heading is kept inline (relative to that
+    path) so the content does not lose its sub-headings. Sections already over the target
+    are never merged; they are split by the sentence packer instead."""
+    merged: list[Section] = []
+    for section in sections:
+        if merged:
+            prev = merged[-1]
+            same_top = prev.heading_path[:1] == section.heading_path[:1]
+            if same_top and section.heading_path[:1]:
+                inline = _relative_heading(section.heading_path, prev.heading_path)
+                body = f"{inline}\n\n{section.text}" if inline else section.text
+                text = f"{prev.text}\n\n{body}"
+                heading = HEADING_SEP.join(prev.heading_path) or None
+                if counter.count_tokens(build_embed_text(heading, text)) <= target_tokens:
+                    merged[-1] = Section(prev.heading_path, text)
+                    continue
+        merged.append(section)
+    return merged
+
+
 def chunk_sections(
     sections: Iterable[Section],
     counter: TokenCounter,
@@ -105,7 +139,7 @@ def chunk_sections(
             f"model_max={counter.max_seq_len}"
         )
     chunks: list[Chunk] = []
-    for section in sections:
+    for section in merge_sections(sections, counter, target_tokens=target_tokens):
         heading = HEADING_SEP.join(section.heading_path) or None
         prefix_tokens = counter.count_tokens(build_embed_text(heading, "x"), special_tokens=False) - 1
         target_c = target_tokens - prefix_tokens - _SPECIAL_TOKENS

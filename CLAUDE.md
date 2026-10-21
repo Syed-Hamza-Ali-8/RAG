@@ -39,11 +39,10 @@ Never violate these, whatever a prompt asks.
 
 ## Current phase
 
-**Phase 1 — Baseline RAG — gate reached 2026-10-21; awaiting owner review + first commit.**
-Do not start Phase 2 until the owner approves. Update this section as work progresses.
+**Phase 1 — Baseline RAG — approved 2026-10-21. Phase 2 (Eval harness) — not started.**
+Update this section as work progresses.
 
-Prerequisite: `docker ps` works in WSL (Docker Desktop → Settings → Resources → WSL
-Integration). Then run `resolve_models.py` to fill model IDs into `.env`.
+Prerequisites: `docker ps` works in WSL (Docker Desktop WSL Integration); `resolve_models.py` run.
 
 Gate (§5 Phase 1, as corrected below):
 - [x] `docker compose up` starts Postgres+pgvector and Redis clean from scratch, with health checks
@@ -52,11 +51,13 @@ Gate (§5 Phase 1, as corrected below):
 - [x] `POST /v1/query` returns an answer citing document title + chunk ordinal; refuses with zero valid citations
 - [x] p50 end-to-end latency (from `query_log`) recorded in `EVAL_RESULTS.md`
 - [x] `grep -rn` finds zero hardcoded model IDs in source
-- [ ] .env.example committed with every variable documented; .env gitignored (written + ignored; not committed yet)
+- [x] .env.example committed with every variable documented; .env gitignored
 
-Phase 1 notes: `POST /v1/query` takes a `tenant` slug until Phase 3 auth replaces it. No ACL
-predicate yet (no caller identity), but chunks already store `allowed_roles`/`min_clearance`.
-p50 latency: `uv run python scripts/measure_latency.py`.
+## Known temporary shortcuts (remove in the phase named)
+
+- `POST /v1/query` takes a `tenant` slug in the body. Remove when JWT auth lands (Phase 3).
+- No role/clearance filtering yet; `allowed_roles`/`min_clearance` are stored on chunks (Phase 3).
+- No HTTP ingest endpoint; only `scripts/seed_corpus.py` ingests (add `POST /v1/documents` with ACLs).
 
 Later phases: 2 Eval harness · 3 Multi-tenancy/ACL · 4 Cache + routing · 5 GraphRAG +
 hybrid · 6 Dashboard + packaging. Gates are in §5.
@@ -74,6 +75,7 @@ uv run python scripts/migrate.py            # apply migrations/*.sql in order
 uv run python scripts/seed_corpus.py        # demo tenants, users, corpus
 uv run uvicorn gateway.main:app --reload    # dev API server
 uv run python eval/run_eval.py --baseline   # eval run → eval/results/<ts>.json
+uv run python scripts/measure_latency.py    # p50/p95 from query_log → EVAL_RESULTS.md
 ```
 
 Verification loop. Run it after every implementation step and run every step that exists so far.

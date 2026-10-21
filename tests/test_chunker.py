@@ -58,10 +58,45 @@ def test_overlap_disabled() -> None:
     assert joined == " ".join(sentences(40))
 
 
-def test_sections_never_share_a_chunk_and_ordinals_are_sequential() -> None:
-    chunks = chunk([Section(("A",), "Alpha one. Alpha two."), Section(("A", "B"), "Beta one.")])
-    assert [c.heading_path for c in chunks] == ["A", "A > B"]
-    assert [c.ordinal for c in chunks] == [0, 1]
+def test_small_sibling_sections_merge_keeping_first_heading_path() -> None:
+    chunks = chunk(
+        [
+            Section(("Policy",), "Intro text."),
+            Section(("Policy", "Annual"), "Twenty days."),
+            Section(("Policy", "Annual", "Carryover"), "Five days."),
+            Section(("Policy", "Sick"), "Ten days."),
+        ]
+    )
+    (only,) = chunks
+    assert only.heading_path == "Policy"
+    assert only.content == (
+        "Intro text.\n\nAnnual\n\nTwenty days.\n\nAnnual > Carryover\n\nFive days.\n\nSick\n\nTen days."
+    )
+    assert only.ordinal == 0
+
+
+def test_never_merges_across_top_level_heading() -> None:
+    chunks = chunk([Section(("A",), "Alpha one."), Section(("B",), "Beta one."), Section((), "Loose.")])
+    assert [c.heading_path for c in chunks] == ["A", "B", None]
+    assert [c.ordinal for c in chunks] == [0, 1, 2]
+
+
+def test_merge_stops_before_exceeding_target() -> None:
+    # target 60 with WordCounter: each section is 2 (heading) + 20 words + 2 specials ≈ 24 tokens
+    sections = [Section(("Doc", f"S{i}"), " ".join(sentences(2))) for i in range(6)]
+    chunks = chunk(sections, overlap_tokens=0)
+    assert 1 < len(chunks) < 6
+    assert all(c.token_count <= 60 for c in chunks)
+    assert chunks[0].heading_path == "Doc > S0"
+    assert sum(c.content.count("end1.") for c in chunks) == 6  # no text lost or duplicated
+
+
+def test_oversize_section_is_not_merged_and_is_split_by_sentences() -> None:
+    big = " ".join(sentences(20))
+    chunks = chunk([Section(("Doc", "Small"), "Tiny."), Section(("Doc", "Big"), big)])
+    assert chunks[0].content == "Tiny."
+    assert all(c.heading_path == "Doc > Big" for c in chunks[1:])
+    assert all(c.token_count <= 80 for c in chunks)
 
 
 def test_list_items_are_kept_whole() -> None:

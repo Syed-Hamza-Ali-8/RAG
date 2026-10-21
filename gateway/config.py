@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     llm_max_completion_tokens: int = 700
     llm_temperature: float = 0.0
 
+    # Eval / benchmark pacing to stay under free-tier rate limits (spec §6.2)
+    eval_request_delay_ms: int = 15000
+
     @property
     def database_dsn(self) -> str:
         return (
