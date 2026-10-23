@@ -1,0 +1,458 @@
+{
+ "meta": {
+  "judge_model": "openai/gpt-oss-120b",
+  "judge_prompt_version": "judge-v1",
+  "finished_utc": "20261023T201135Z"
+ },
+ "summary": {
+  "fabrication": {
+   "n": 5,
+   "caught": 5,
+   "rate": 1.0,
+   "full_verdict_match": 5,
+   "misses": []
+  },
+  "wrong_question": {
+   "n": 5,
+   "caught": 5,
+   "rate": 1.0,
+   "full_verdict_match": 4,
+   "misses": []
+  },
+  "bad_citation": {
+   "n": 5,
+   "caught": 0,
+   "rate": 0.0,
+   "full_verdict_match": 0,
+   "misses": [
+    "c11",
+    "c12",
+    "c13",
+    "c14",
+    "c15"
+   ]
+  },
+  "good": {
+   "n": 5,
+   "caught": 5,
+   "rate": 1.0,
+   "full_verdict_match": 5,
+   "misses": []
+  },
+  "judge_errors": [],
+  "fabrication_pass_rate": 0.8,
+  "fit": true
+ },
+ "results": [
+  {
+   "id": "c01",
+   "category": "fabrication",
+   "judge_query_log_id": 295,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "unsupported_claims": [
+     "Full-time Acme employees receive 24 working days of paid annual leave per calendar year."
+    ],
+    "reason": "The answer states 24 days, but sources specify 22 days.",
+    "raw": "{\"faithful\": false, \"relevant\": true, \"correct\": false, \"unsupported_claims\": [\"Full-time Acme employees receive 24 working days of paid annual leave per calendar year.\"], \"reason\": \"The answer states 24 days, but sources specify 22 days.\"}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c02",
+   "category": "fabrication",
+   "judge_query_log_id": 296,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "unsupported_claims": [
+     "The committee is chaired by Hamid Rauf, Director of People Operations"
+    ],
+    "reason": "The answer names Hamid Rauf, which is not mentioned in the sources; the sources state Priya Raman chairs the committee.",
+    "raw": "{\"faithful\": false, \"relevant\": true, \"correct\": false, \"unsupported_claims\": [\"The committee is chaired by Hamid Rauf, Director of People Operations\"], \"reason\": \"The answer names Hamid Rauf, which is not mentioned in the sources; the sources state Priya Raman chairs the committee.\"}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c03",
+   "category": "fabrication",
+   "judge_query_log_id": 297,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "unsupported_claims": [
+     "Ledger Vault database backups are kept for 45 days."
+    ],
+    "reason": "The answer claims 45 days, but the source S1 specifies a 35\u2011day retention period.",
+    "raw": "{\"faithful\": false, \"relevant\": true, \"correct\": false, \"unsupported_claims\": [\"Ledger Vault database backups are kept for 45 days.\"], \"reason\": \"The answer claims 45 days, but the source S1 specifies a 35\u2011day retention period.\"}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c04",
+   "category": "fabrication",
+   "judge_query_log_id": 298,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "unsupported_claims": [
+     "Tessera Cloud commits to 99.97% monthly availability"
+    ],
+    "reason": "The source states the commitment is 99.95%, not 99.97%.",
+    "raw": "{\"faithful\": false, \"relevant\": true, \"correct\": false, \"unsupported_claims\": [\"Tessera Cloud commits to 99.97% monthly availability\"], \"reason\": \"The source states the commitment is 99.95%, not 99.97%.\"}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c05",
+   "category": "fabrication",
+   "judge_query_log_id": 299,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "unsupported_claims": [
+     "Acme payslips are published in PeopleDesk on the 28th of each month"
+    ],
+    "reason": "The answer gives the wrong day (28th) which is not supported by the source stating the 25th.",
+    "raw": "{\"faithful\": false, \"relevant\": true, \"correct\": false, \"unsupported_claims\": [\"Acme payslips are published in PeopleDesk on the 28th of each month\"], \"reason\": \"The answer gives the wrong day (28th) which is not supported by the source stating the 25th.\"}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c06",
+   "category": "wrong_question",
+   "judge_query_log_id": 300,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "unsupported_claims": [],
+    "reason": "The answer provides the audit fee, which is supported by the source, but does not answer when the audit will take place, making it irrelevant and not matching the reference answer.",
+    "raw": "{\"faithful\": true, \"relevant\": false, \"correct\": false, \"unsupported_claims\": [], \"reason\": \"The answer provides the audit fee, which is supported by the source, but does not answer when the audit will take place, making it irrelevant and not matching the reference answer.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c07",
+   "category": "wrong_question",
+   "judge_query_log_id": 301,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "unsupported_claims": [],
+    "reason": "The answer gives a supported fact about sick leave, but it does not answer the question about annual leave and contradicts the reference.",
+    "raw": "{\"faithful\": true, \"relevant\": false, \"correct\": false, \"unsupported_claims\": [], \"reason\": \"The answer gives a supported fact about sick leave, but it does not answer the question about annual leave and contradicts the reference.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c08",
+   "category": "wrong_question",
+   "judge_query_log_id": 302,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "unsupported_claims": [],
+    "reason": "The answer states who owns the performance review process, which is supported by the sources, but it does not answer who chairs the moderation committee.",
+    "raw": "{\"faithful\": true, \"relevant\": false, \"correct\": false, \"unsupported_claims\": [], \"reason\": \"The answer states who owns the performance review process, which is supported by the sources, but it does not answer who chairs the moderation committee.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c09",
+   "category": "wrong_question",
+   "judge_query_log_id": 303,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "unsupported_claims": [],
+    "reason": "Answer gives paternity leave info, not the requested maternity leave.",
+    "raw": "{\"faithful\": true, \"relevant\": false, \"correct\": false, \"unsupported_claims\": [], \"reason\": \"Answer gives paternity leave info, not the requested maternity leave.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c10",
+   "category": "wrong_question",
+   "judge_query_log_id": 304,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": false,
+    "unsupported_claims": [],
+    "reason": "Answer gives 20\u202fApril\u202f2027, which is supported by sources but does not match the reference answer of 30\u202fApril\u202f2027.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": false, \"unsupported_claims\": [], \"reason\": \"Answer gives 20\u202fApril\u202f2027, which is supported by sources but does not match the reference answer of 30\u202fApril\u202f2027.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": false
+   },
+   "caught": true,
+   "full_match": false
+  },
+  {
+   "id": "c11",
+   "category": "bad_citation",
+   "judge_query_log_id": 305,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "unsupported_claims": [],
+    "reason": "The answer correctly states Sara Qureshi, CEO, signed on 1 February 2024, which is supported by the sources and matches the reference.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"unsupported_claims\": [], \"reason\": \"The answer correctly states Sara Qureshi, CEO, signed on 1 February 2024, which is supported by the sources and matches the reference.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true
+   },
+   "caught": false,
+   "full_match": false
+  },
+  {
+   "id": "c12",
+   "category": "bad_citation",
+   "judge_query_log_id": 306,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "unsupported_claims": [],
+    "reason": "The answer correctly states Priya Raman as Head of People, which is supported by the sources.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"unsupported_claims\": [], \"reason\": \"The answer correctly states Priya Raman as Head of People, which is supported by the sources.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true
+   },
+   "caught": false,
+   "full_match": false
+  },
+  {
+   "id": "c13",
+   "category": "bad_citation",
+   "judge_query_log_id": 307,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "unsupported_claims": [],
+    "reason": "The answer correctly states the expiry date, which is supported by source S1 and matches the reference.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"unsupported_claims\": [], \"reason\": \"The answer correctly states the expiry date, which is supported by source S1 and matches the reference.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true
+   },
+   "caught": false,
+   "full_match": false
+  },
+  {
+   "id": "c14",
+   "category": "bad_citation",
+   "judge_query_log_id": 308,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "unsupported_claims": [],
+    "reason": "The answer\u2019s claim of up to two remote days per week is supported by S6 and matches the reference\u2019s key fact.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"unsupported_claims\": [], \"reason\": \"The answer\u2019s claim of up to two remote days per week is supported by S6 and matches the reference\u2019s key fact.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true
+   },
+   "caught": false,
+   "full_match": false
+  },
+  {
+   "id": "c15",
+   "category": "bad_citation",
+   "judge_query_log_id": 309,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "unsupported_claims": [],
+    "reason": "Answer gives the correct per diem amount and it is supported by the sources.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"unsupported_claims\": [], \"reason\": \"Answer gives the correct per diem amount and it is supported by the sources.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true
+   },
+   "caught": false,
+   "full_match": false
+  },
+  {
+   "id": "c16",
+   "category": "good",
+   "judge_query_log_id": 310,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "unsupported_claims": [],
+    "reason": "The answer correctly states the RTO as 30 minutes, which is supported by the sources and matches the reference.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"unsupported_claims\": [], \"reason\": \"The answer correctly states the RTO as 30 minutes, which is supported by the sources and matches the reference.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c17",
+   "category": "good",
+   "judge_query_log_id": 311,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "unsupported_claims": [],
+    "reason": "The answer matches the sources and reference, stating the storage incident caused read\u2011only state.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"unsupported_claims\": [], \"reason\": \"The answer matches the sources and reference, stating the storage incident caused read\u2011only state.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c18",
+   "category": "good",
+   "judge_query_log_id": 312,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "unsupported_claims": [],
+    "reason": "Answer matches sources and reference, stating the metadata DB ran out of storage due to a surge of uploads.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"unsupported_claims\": [], \"reason\": \"Answer matches sources and reference, stating the metadata DB ran out of storage due to a surge of uploads.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c19",
+   "category": "good",
+   "judge_query_log_id": 313,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "unsupported_claims": [],
+    "reason": "Answer correctly states the minimum salary supported by source S3 and matches the reference.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"unsupported_claims\": [], \"reason\": \"Answer correctly states the minimum salary supported by source S3 and matches the reference.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c20",
+   "category": "good",
+   "judge_query_log_id": 314,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "unsupported_claims": [],
+    "reason": "The answer states the GBP\u202f3\u202fmillion liability cap, which is supported by the source and matches the reference's key fact.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"unsupported_claims\": [], \"reason\": \"The answer states the GBP\u202f3\u202fmillion liability cap, which is supported by the source and matches the reference's key fact.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true
+   },
+   "caught": true,
+   "full_match": true
+  }
+ ]
+}

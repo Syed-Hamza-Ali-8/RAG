@@ -64,6 +64,40 @@ Judge errors: 0. Hallucinated on unanswerable: none. Refused answerable: ['q022'
   still marked it faithful.
 - Buried-fact recall@6 is 85% (17/20), exactly the ceiling fixed before the harness was built.
 
+## Judge calibration — judge-v1
+
+Negative and positive controls, by `uv run python eval/calibrate_judge.py`; results in
+`eval/calibration/judge-v1.json`. Judge `openai/gpt-oss-120b`, prompt `judge-v1`. The 20 items in
+`eval/judge_calibration.jsonl` are synthetic answers over real Phase 2 baseline contexts, each with a
+known flaw. Expected verdicts, catch rules and the fitness threshold (at least 80% of fabrications)
+were committed in `8b1b823` before the judge saw any item.
+
+| Category (5 each) | Caught when | Caught | Full expected verdict |
+|---|---|---|---|
+| Fabrication: value absent from every context chunk | faithful = false | 5 / 5 | 5 / 5 |
+| Wrong question: true context fact, neighbouring question | correct = false | 5 / 5 | 4 / 5 |
+| Bad citation: true fact cited to a chunk that lacks it | faithful = false | **0 / 5** | 0 / 5 |
+| Good answer (false-negative check) | all three true | 5 / 5 | 5 / 5 |
+
+**Verdict: fit to measure faithfulness and correctness** (fabrications 100%, no false negatives).
+With 5 items per category the resolution is coarse: 5/5 is consistent with a true catch rate well
+below 100%.
+
+**Known blind spot: citation support.** judge-v1 never checks whether the cited chunk supports the
+claim; its prompt says "citation markers such as [S1] are not claims", so it judges against the
+whole source set. Its own reasons show it: for c13 it called the claim "supported by source S1"
+while the answer cites S6. The runtime citation check only verifies that cited labels exist, so
+nothing in the stack currently detects a misattributed citation. Faithfulness numbers from judge-v1
+must not be read as "citations are correct".
+
+c10 (the q029 pattern) was caught as not correct but judged "relevant"; the catch rule for this
+category is correctness only, so it counts as caught.
+
+Judge cost: 20 calls used 54,940 tokens (2,747 per call on average), logged in `query_log` with
+`purpose = 'eval_judge'`. A full golden-set run makes about 85 judge calls, about 234,000 tokens:
+more than the judge model's 200,000-token daily cap, so full runs exceed the daily budget of both
+models.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
