@@ -134,3 +134,23 @@ That improvement belongs to Phase 3. Phase 5 is judged only against the Phase 4 
 against the Phase 2 numbers, so a Phase 3 side effect cannot be read as a Phase 5 win.
 **Phase 5 success criterion:** with hybrid retrieval, `POST /v1/query` for this question must
 retrieve the chunk holding the on-call allowance within its top 6 and answer with a valid citation.
+
+### Multi-hop questions whose hops are not all retrieved
+
+**Second pre-registered Phase 5 criterion, fixed 2026-10-24 before any Phase 3–5 work.** Multi-hop
+all-hops@10 is the weakest number in the Phase 2 baseline: 11 of 25 (44%) multi-hop items have
+every hop's evidence in the top 10 (8 of 25, 32%, in the top 6 the model actually sees). Six of the
+ten false refusals in the baseline are multi-hop items with a hop missing from the top 6. The 14
+items failing all-hops@10 are q051, q052, q054, q056, q058, q060, q062, q064, q067, q068, q069,
+q070, q073 and q075 (from per-item `hop_ranks` in `eval/baselines/phase-2.json`).
+
+- **Measure:** all-hops@10 on the 25 multi-hop items, the same items and metric as here. Also report
+  all-hops@6, which bounds what the model can answer.
+- **Comparison:** Phase 5 is judged against the Phase 4 baseline's value, never this Phase 2 value.
+  Any movement between Phase 2 and Phase 4 (Phase 3's ACL filtering shrinks candidate pools) belongs to
+  those phases. The Phase 5 claim reads "multi-hop all-hops@10 rose from X% (Phase 4) to Y%".
+- **Ceiling:** 25 of 25. Unlike the buried-fact class there is real headroom (up to 14 items from here),
+  so a large gain is possible. A gain on this class with no change in single-hop recall is the expected
+  signature of graph traversal working; a single-hop regression must be reported alongside it.
+- No item may be added to, removed from or reworded in the multi-hop class to move this number. If the
+  golden set changes for another reason, the criterion is re-stated on the new set before Phase 5 runs.
