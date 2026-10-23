@@ -39,20 +39,20 @@ Never violate these, whatever a prompt asks.
 
 ## Current phase
 
-**Phase 1 complete 2026-10-23. Phase 2 (Eval harness) in progress: golden set written and
-verified (`eval/verify_golden.py`); harness built (`eval/run_eval.py`); gate open.** Update as work progresses.
-Groq free tier: 8,000 tokens/min (pace at `EVAL_REQUEST_DELAY_MS=30000`) AND 200,000 tokens/day per model
-(rolling 24 h, not in headers). A full 100-item run needs ~252k generator tokens: it spans >1 day via `--resume`.
+**Phase 2 complete 2026-10-24 (baseline + judge-v1 calibration in `EVAL_RESULTS.md`). Phase 3 not started.**
+Before Phase 3: run `eval/calibrate_judge.py` (judge-v2, 40 items, pre-registered pass rates); the Phase 3
+re-baseline uses judge-v2 and is also the first measure of `citations_supported`. Update as work progresses.
 
-Phase 2 requirements beyond §5:
+Eval budget (Groq free tier, per model: 8,000 tokens/min AND 200,000 tokens/day, rolling 24 h, not in headers):
+generator ~2.5k tokens x 100 answers = ~250k; judge ~2.75k x ~85 answered = ~234k. Both exceed 200k, so
+every full golden-set run is planned as a TWO-DAY run on one account (`--resume`); pace at 30 s per call.
+
+Phase 2 rules that stay in force:
 - Golden set: 20 `buried_fact` items, selected on structure only, never on retrieval rank (rule in `EVAL_RESULTS.md`).
-- Golden-set schema extension beyond §5 (approved): `as_user`, `as_clearance`, `evidence`, `tags`, `pair`,
-  `absent_terms`, `paraphrase_of`. Items run as real seeded users so Phase 3 evals use the real auth path.
+- Approved schema extension beyond §5: `as_user` (real seeded user), `as_clearance`, `evidence`, `tags`, `pair`, `absent_terms`, `paraphrase_of`.
 - `run_eval.py --subset 25`: fixed stratified sample for iteration; only full runs may enter `EVAL_RESULTS.md`.
-- Re-run the full golden set at the end of every phase that can move the numbers; record each as its own
-  labelled baseline. Compare each phase with the previous phase's baseline (Phase 5 vs Phase 4, never Phase 2).
-- Diagnose every refusal from `query_log.answer_raw` + `citations_valid`/`citations_rejected`; `answer_raw`
-  may quote restricted content: never expose it beyond its tenant and role scope.
+- Full re-baseline at the end of every phase that can move numbers; compare only with the previous phase's.
+- Diagnose refusals from `query_log.answer_raw` + citation counts; never expose `answer_raw` beyond tenant/role scope.
 
 ## Known temporary shortcuts (remove in the phase named)
 

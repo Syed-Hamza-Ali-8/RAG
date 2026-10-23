@@ -63,6 +63,14 @@ Judge errors: 0. Hallucinated on unanswerable: none. Refused answerable: ['q022'
   is scored: q029 answered "20 April 2027" (the clearance meeting, not the report deadline) and the judge
   still marked it faithful.
 - Buried-fact recall@6 is 85% (17/20), exactly the ceiling fixed before the harness was built.
+- **Known limitation: citation correctness is not measured in this baseline.** The judge (judge-v1)
+  checks claims against the whole source set, never whether the cited chunk supports the claim
+  (calibration: 0/5 misattributed citations caught), and the runtime check only verifies that a cited
+  label exists. "Faithful 100%" means every claim is supported somewhere in the context, not that
+  citations point to the right chunk. judge-v2 adds a `citations_supported` verdict; it is first
+  measured in the Phase 3 re-baseline.
+- Gate: Phase 2 closed 2026-10-24 on the judge calibration below; the hand-labelled spot-check sheet
+  (`eval/spotcheck/`) remains a human check on the calibration set itself.
 
 ## Judge calibration — judge-v1
 
@@ -97,6 +105,18 @@ Judge cost: 20 calls used 54,940 tokens (2,747 per call on average), logged in `
 `purpose = 'eval_judge'`. A full golden-set run makes about 85 judge calls, about 234,000 tokens:
 more than the judge model's 200,000-token daily cap, so full runs exceed the daily budget of both
 models.
+
+### judge-v2 — pre-registered, not yet run
+
+judge-v2 adds a fourth verdict, `citations_supported`: every citation marker must point to a source
+that supports its own sentence. The other three verdicts keep judge-v1's definitions. Its
+calibration set, `eval/judge_calibration_v2.jsonl`, has 10 items per category (40): c01–c20 are the
+judge-v1 items unchanged (its regression test), c21–c40 are new, built under the same mechanically
+checked rules. Catch rules: fabrication → faithful = false; wrong question → correct = false; bad
+citation → **citations_supported = false** (judge-v1's rule was faithful = false); good → all four true.
+Pass rates, all required: fabrication ≥ 80% (the original bar), wrong question ≥ 80%, bad citation
+≥ 80%, good ≥ 90% (at most one false negative). Not run yet: the judge model's daily budget on the
+current account was nearly spent (an estimated 170,000 of 200,000 tokens) when judge-v2 was built.
 
 ## Measurement notes
 

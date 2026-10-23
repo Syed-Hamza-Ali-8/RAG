@@ -135,7 +135,8 @@ class StubJudge(StubLLM):
     async def complete(self, messages: list[ChatCompletionMessageParam]) -> Completion:
         self.calls.append(messages)
         return Completion(
-            '{"faithful": true, "relevant": true, "correct": true, "unsupported_claims": [], "reason": "ok"}',
+            '{"faithful": true, "relevant": true, "correct": true, "citations_supported": true, '
+            '"unsupported_claims": [], "miscited": [], "reason": "ok"}',
             self.model_id,
             prompt_tokens=10,
             completion_tokens=5,
@@ -183,6 +184,7 @@ async def test_evaluate_item_end_to_end_with_stubs(
     assert record["retrieval"]["recall@6"] == 1.0
     assert record["refused"] is False and record["citations"] == ["hr-leave-policy#0"]
     assert record["judge"]["correct"] is True and record["judge"]["raw"].startswith("{")
+    assert record["judge"]["citations_supported"] is True
     assert record["query_log_id"] is not None
     async with app.state.pool.acquire() as conn:
         row = await conn.fetchrow(

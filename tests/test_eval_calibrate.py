@@ -1,6 +1,7 @@
+from pathlib import Path
 from typing import Any
 
-from calibrate_judge import FABRICATION_PASS_RATE, caught, check_item, load, summarise
+from calibrate_judge import PASS_RATES, caught, check_item, load, summarise
 
 CTX = {
     "a#0": ("Doc A", "Annual leave is 22 days."),
@@ -38,26 +39,56 @@ def test_caught_and_summary() -> None:
     fab = {"caught_if": {"faithful": False}}
     assert caught(fab, {"faithful": False, "relevant": True, "correct": False})
     assert not caught(fab, {"faithful": True, "relevant": True, "correct": False})
-    results = [
-        {"id": f"f{n}", "category": "fabrication", "verdict": {}, "caught": n < 4, "full_match": False}
-        for n in range(5)
-    ]
-    s = summarise(results)
-    assert s["fabrication"] == {"n": 5, "caught": 4, "rate": 0.8, "full_verdict_match": 0, "misses": ["f4"]}
-    assert s["fit"] is True and FABRICATION_PASS_RATE == 0.8
-    results[3]["caught"] = False
-    assert summarise(results)["fit"] is False
+
+    def results(cat: str, hits: int) -> list[dict[str, Any]]:
+        return [
+            {"id": f"{cat}{n}", "category": cat, "verdict": {}, "caught": n < hits, "full_match": False}
+            for n in range(10)
+        ]
+
+    passing = (
+        results("fabrication", 8)
+        + results("wrong_question", 8)
+        + results("bad_citation", 8)
+        + results("good", 9)
+    )
+    s = summarise(passing)
+    assert s["fabrication"]["rate"] == 0.8 and s["fabrication"]["misses"] == ["fabrication8", "fabrication9"]
+    assert s["fit"] is True
+    assert PASS_RATES == {"fabrication": 0.8, "wrong_question": 0.8, "bad_citation": 0.8, "good": 0.9}
+    # Any one category below its bar makes the judge unfit, including false negatives on good answers.
+    assert (
+        summarise(
+            results("fabrication", 8)
+            + results("wrong_question", 8)
+            + results("bad_citation", 7)
+            + results("good", 9)
+        )["fit"]
+        is False
+    )
+    assert (
+        summarise(
+            results("fabrication", 8)
+            + results("wrong_question", 8)
+            + results("bad_citation", 8)
+            + results("good", 8)
+        )["fit"]
+        is False
+    )
 
 
-def test_committed_set_has_five_per_category() -> None:
+def test_committed_v2_set_has_ten_per_category_and_keeps_v1_items() -> None:
     items = load()
-    assert len(items) == 20
-    assert {
-        c: sum(i["category"] == c for i in items)
-        for c in ("fabrication", "wrong_question", "bad_citation", "good")
-    } == {
-        "fabrication": 5,
-        "wrong_question": 5,
-        "bad_citation": 5,
-        "good": 5,
-    }
+    assert len(items) == 40
+    cats = ("fabrication", "wrong_question", "bad_citation", "good")
+    assert {c: sum(i["category"] == c for i in items) for c in cats} == dict.fromkeys(cats, 10)
+    v1 = {i["id"]: i for i in load(Path("eval/judge_calibration.jsonl"))}
+    for item in items[:20]:
+        assert (item["answer"], item["context_gids"]) == (
+            v1[item["id"]]["answer"],
+            v1[item["id"]]["context_gids"],
+        )
+    assert all("citations_supported" in i["expected"] for i in items)
+    assert all(
+        i["caught_if"] == {"citations_supported": False} for i in items if i["category"] == "bad_citation"
+    )

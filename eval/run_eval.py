@@ -162,6 +162,10 @@ def aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
             "false_refusal_answerable": _rate([r["refused"] for r in ans]),
             "faithful": _rate([r["judge"]["faithful"] for r in judged]),
             "relevant": _rate([r["judge"]["relevant"] for r in judged]),
+            # judge-v2 only; judge-v1 verdicts have no citation check, so they are excluded, not counted.
+            "citations_supported": _rate(
+                [r["judge"]["citations_supported"] for r in judged if "citations_supported" in r["judge"]]
+            ),
             # Correctness over all answerable items: a refusal counts as not correct.
             "correct_answerable": _rate([bool(r.get("judge") and r["judge"]["correct"]) for r in ans]),
             "near_miss_pairs_both_correct": _rate(
@@ -428,10 +432,13 @@ def write_baseline_section(label: str, result: dict[str, Any], baseline_file: Pa
         ("false_refusal_answerable", "Refused answerable (false refusals)"),
         ("faithful", "Faithful (judge, answered items)"),
         ("relevant", "Relevant (judge, answered items)"),
+        ("citations_supported", "Citations supported (judge-v2, answered items)"),
         ("correct_answerable", "Correct (judge; refusals count as not correct)"),
         ("near_miss_pairs_both_correct", "Near-miss pairs with both answers correct"),
     ):
-        v = g[key]
+        v = g.get(key)
+        if not v or not v["n"]:
+            continue
         lines.append(f"| {title} | {pct(v['rate'])} | {v['count']} / {v['n']} |")
     lines += [
         "",

@@ -1,15 +1,18 @@
 """Judge calibration with negative and positive controls (Phase 2 gate).
 
     uv run python eval/calibrate_judge.py --check   # verify the set's construction; no LLM calls
-    uv run python eval/calibrate_judge.py           # verify, then judge all 20 items (paced)
+    uv run python eval/calibrate_judge.py           # verify, then judge every item (paced)
+    uv run python eval/calibrate_judge.py --set eval/judge_calibration.jsonl  # the 20-item v1 set
 
-eval/judge_calibration.jsonl holds 20 synthetic answers over real retrieved contexts (the top 6
-of the Phase 2 baseline for a golden item), each with a known flaw:
-- fabrication (5): a value absent from every context chunk; caught when faithful = false
-- wrong_question (5): a true context fact answering a neighbouring question; caught when correct = false
-- bad_citation (5): a true fact cited to a context chunk that lacks it; caught when faithful = false
-- good (5): correct, faithful, correctly cited; passed when all three verdicts are true
-Expected verdicts, catch rules and the fitness threshold were fixed before the judge was run.
+The default set, eval/judge_calibration_v2.jsonl, holds 40 synthetic answers over real retrieved
+contexts (the top 6 of the Phase 2 baseline for a golden item), 10 per category, each with a known
+flaw. Items c01-c20 are the judge-v1 set (same answers and contexts), now its regression test.
+- fabrication: a value absent from every context chunk; caught when faithful = false
+- wrong_question: a true context fact answering a neighbouring question; caught when correct = false
+- bad_citation: a true fact cited to a chunk that lacks it; caught when citations_supported = false
+  (judge-v2; in the v1 set the rule was faithful = false, which judge-v1 never produced)
+- good: correct, faithful, correctly cited; passed when every expected verdict is true
+Each item's expected verdicts and catch rule, and PASS_RATES below, were fixed before the run.
 """
 
 import argparse
@@ -27,14 +30,15 @@ from gateway.config import get_settings
 from gateway.db import create_pool
 from gateway.llm.provider import OpenAICompatibleLLM
 from gateway.rag import resolve_tenant
-from judge import JUDGE_PROMPT_VERSION, Source
+from judge import JUDGE_PROMPT_VERSION, VERDICT_FIELDS, Source
 from run_eval import RESULTS_DIR, HarnessStopped, judge_and_log, preflight
 
 EVAL_DIR = Path(__file__).resolve().parent
-CALIBRATION = EVAL_DIR / "judge_calibration.jsonl"
-# Fixed before the first calibration run: a judge catching fewer fabrications than this is not fit to
-# measure Phases 4-5, and its prompt is tightened before proceeding.
-FABRICATION_PASS_RATE = 0.8
+CALIBRATION = EVAL_DIR / "judge_calibration_v2.jsonl"
+# Fixed before the judge-v2 calibration run. Fabrication 80% is the user's fitness bar (judge-v1 was
+# held to it alone); the same bar applies to the other negative controls, and at most 1 in 10 good
+# answers may be rejected. A judge below any of these is not fit to measure Phases 3-5.
+PASS_RATES = {"fabrication": 0.8, "wrong_question": 0.8, "bad_citation": 0.8, "good": 0.9}
 CATEGORIES = ("fabrication", "wrong_question", "bad_citation", "good")
 
 
@@ -94,16 +98,17 @@ def summarise(results: list[dict[str, Any]]) -> dict[str, Any]:
             "full_verdict_match": sum(r["full_match"] for r in rs),
             "misses": [r["id"] for r in rs if not r["caught"]],
         }
-    fab = summary["fabrication"]["rate"]
     summary["judge_errors"] = [r["id"] for r in results if "judge_error" in r]
-    summary["fabrication_pass_rate"] = FABRICATION_PASS_RATE
-    summary["fit"] = fab is not None and fab >= FABRICATION_PASS_RATE and not summary["judge_errors"]
+    summary["pass_rates"] = PASS_RATES
+    summary["fit"] = not summary["judge_errors"] and all(
+        summary[cat]["rate"] is not None and summary[cat]["rate"] >= rate for cat, rate in PASS_RATES.items()
+    )
     return summary
 
 
-async def run(check_only: bool) -> int:
+async def run(check_only: bool, path: Path = CALIBRATION) -> int:
     settings = get_settings()
-    items = load()
+    items = load(path)
     pool = await create_pool(settings.database_dsn)
     try:
         contexts: dict[str, dict[str, tuple[str, str]]] = {}
@@ -154,9 +159,9 @@ async def run(check_only: bool) -> int:
                 r: dict[str, Any] = {"id": item["id"], "category": item["category"], **out}
                 if "judge" in out:
                     v = out["judge"]
-                    r["verdict"] = {k: v[k] for k in ("faithful", "relevant", "correct")}
+                    r["verdict"] = {k: v[k] for k in VERDICT_FIELDS}
                     r["caught"] = caught(item, v)
-                    r["full_match"] = r["verdict"] == item["expected"]
+                    r["full_match"] = all(r["verdict"][k] == want for k, want in item["expected"].items())
                 print(
                     f"  [{n}/{len(items)}] {item['id']} {item['category']:15s} "
                     f"{r.get('verdict', 'JUDGE ERROR')} caught={r.get('caught')}",
@@ -178,6 +183,7 @@ async def run(check_only: bool) -> int:
     meta = {
         "judge_model": judge_llm.model_id,
         "judge_prompt_version": JUDGE_PROMPT_VERSION,
+        "calibration_set": path.name,
         "finished_utc": stamp,
     }
     out_path.write_text(
@@ -194,7 +200,7 @@ async def run(check_only: bool) -> int:
         )
     print(
         f"\njudge {judge_llm.model_id} ({JUDGE_PROMPT_VERSION}): "
-        f"{'FIT' if summary['fit'] else 'NOT FIT'} (fabrication pass rate {FABRICATION_PASS_RATE:.0%})"
+        f"{'FIT' if summary['fit'] else 'NOT FIT'} (pass rates {PASS_RATES})"
     )
     return 0 if summary["fit"] else 3
 
@@ -204,7 +210,9 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--check", action="store_true", help="verify construction only; no LLM calls")
-    sys.exit(asyncio.run(run(parser.parse_args().check)))
+    parser.add_argument("--set", type=Path, default=CALIBRATION, help="calibration set (default: v2)")
+    args = parser.parse_args()
+    sys.exit(asyncio.run(run(args.check, args.set)))
 
 
 if __name__ == "__main__":
