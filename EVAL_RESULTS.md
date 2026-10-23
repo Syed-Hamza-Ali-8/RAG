@@ -71,5 +71,15 @@ MERGED score 0.5916, rank 27 of 133, chunk #1 (333 tokens), MISSED; top-6 cutoff
 `scripts/diagnose_refusals.py ... --needle "PKR 15,000"` confirms the same merged rank and score.
 
 Both scripts rank by vector similarity only; they document the vector-only baseline.
+
+**The buried-fact class in the golden set (20 items, tag `buried_fact`).** Selected on
+structure only: the answer is a single sentence making up at most 6.5% (about 6%) of a gold
+chunk of 300+ tokens. The 6.5% value was set after seeing three original items at 6.1%; no
+item was chosen, kept or dropped because of its retrieval rank. Ten items were in the first
+draft; the ten added later were fixed, together with an ordered reserve list, before any rank
+was computed, and none needed replacing. `eval/verify_golden.py` enforces the rule. The Phase 5
+claim is measured over all 20: "recall@6 on the buried-fact class rose from X% to Y%".
+q101 rewords q022 (tag `buried_fact_paraphrase`, outside the 20). The same question ranked its
+gold chunk 64th of 133 in one wording and 27th in the other: wording alone moves rank a lot.
 **Phase 5 success criterion:** with hybrid retrieval, `POST /v1/query` for this question must
 retrieve the chunk holding the on-call allowance within its top 6 and answer with a valid citation.

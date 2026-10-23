@@ -17,7 +17,9 @@
         { "email": "engineer@acme.example",    "roles": ["employee", "engineering"],  "clearance": 1 },
         { "email": "legal@acme.example",       "roles": ["employee", "legal"],        "clearance": 3 },
         { "email": "finance@acme.example",     "roles": ["employee", "finance"],      "clearance": 2 },
-        { "email": "admin@acme.example",       "roles": ["employee", "admin"],        "clearance": 3 }
+        { "email": "admin@acme.example",       "roles": ["employee", "admin"],        "clearance": 3 },
+        { "email": "contracts-manager@acme.example", "roles": ["employee", "finance", "legal"],     "clearance": 3 },
+        { "email": "tech-risk-lead@acme.example",    "roles": ["employee", "engineering", "legal"], "clearance": 3 }
       ]
     },
     {
@@ -30,7 +32,9 @@
         { "email": "engineer@globex.example",  "roles": ["employee", "engineering"],  "clearance": 1 },
         { "email": "legal@globex.example",     "roles": ["employee", "legal"],        "clearance": 3 },
         { "email": "finance@globex.example",   "roles": ["employee", "finance"],      "clearance": 2 },
-        { "email": "admin@globex.example",     "roles": ["employee", "admin"],        "clearance": 3 }
+        { "email": "admin@globex.example",     "roles": ["employee", "admin"],        "clearance": 3 },
+        { "email": "contracts-manager@globex.example", "roles": ["employee", "finance", "legal"],                 "clearance": 3 },
+        { "email": "it-controls-lead@globex.example",  "roles": ["employee", "engineering", "legal", "finance"],  "clearance": 3 }
       ]
     }
   ]

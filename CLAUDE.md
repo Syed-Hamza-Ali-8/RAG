@@ -39,18 +39,20 @@ Never violate these, whatever a prompt asks.
 
 ## Current phase
 
-**Phase 1 — Baseline RAG — complete 2026-10-23. Phase 2 (Eval harness) — not started.**
-Update this section as work progresses.
-
-Prerequisites: `docker ps` works in WSL (Docker Desktop WSL Integration); `resolve_models.py` run.
-Phase 1 gate (§5, as corrected below): all items passed; answer-v2 baseline in `EVAL_RESULTS.md`.
+**Phase 1 complete 2026-10-23. Phase 2 (Eval harness) in progress: golden set written and
+verified (`eval/verify_golden.py`); harness (`eval/run_eval.py`) not started.** Update as work progresses.
 Groq free tier is 8,000 tokens/min: pace eval runs at `EVAL_REQUEST_DELAY_MS=30000` (~2.3k-token prompts).
 
 Phase 2 requirements beyond §5:
-- Golden set includes ≥8 questions whose answer is a single sentence buried in a large mixed-topic
-  chunk (the "Known baseline weaknesses" class in `EVAL_RESULTS.md`), so Phase 5 gains are measured.
-- Diagnose every refusal from `query_log.answer_raw` + `citations_valid`/`citations_rejected`.
-- `query_log.answer_raw` may quote restricted content: never expose it beyond its tenant and role scope.
+- Golden set: 20 `buried_fact` items, selected on structure only, never on retrieval rank (rule in `EVAL_RESULTS.md`).
+- Golden-set schema extension beyond §5 (approved): `as_user`, `as_clearance`, `evidence`, `tags`, `pair`,
+  `absent_terms`, `paraphrase_of`. Items run as real seeded users so Phase 3 evals use the real auth path.
+- `run_eval.py --subset N` = fixed, stratified, reproducible sample for iteration; label every results file
+  subset or full; only full runs may enter `EVAL_RESULTS.md`.
+- Re-run the full golden set at the end of every phase that can move the numbers; record each as its own
+  labelled baseline. Compare each phase with the previous phase's baseline (Phase 5 vs Phase 4, never Phase 2).
+- Diagnose every refusal from `query_log.answer_raw` + `citations_valid`/`citations_rejected`; `answer_raw`
+  may quote restricted content: never expose it beyond its tenant and role scope.
 
 ## Known temporary shortcuts (remove in the phase named)
 
@@ -58,8 +60,7 @@ Phase 2 requirements beyond §5:
 - No role/clearance filtering yet; `allowed_roles`/`min_clearance` are stored on chunks (Phase 3).
 - No HTTP ingest endpoint; only `scripts/seed_corpus.py` ingests (add `POST /v1/documents` with ACLs).
 
-Later phases: 2 Eval harness · 3 Multi-tenancy/ACL · 4 Cache + routing · 5 GraphRAG +
-hybrid · 6 Dashboard + packaging. Gates are in §5.
+Phases (gates in §5): 2 Eval · 3 Multi-tenancy/ACL · 4 Cache + routing · 5 GraphRAG + hybrid · 6 Dashboard.
 
 ## Commands (WSL, run from repo root)
 
