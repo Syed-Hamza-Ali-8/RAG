@@ -40,7 +40,7 @@ Never violate these, whatever a prompt asks.
 ## Current phase
 
 **Phase 1 complete 2026-10-23. Phase 2 (Eval harness) in progress: golden set written and
-verified (`eval/verify_golden.py`); harness (`eval/run_eval.py`) not started.** Update as work progresses.
+verified (`eval/verify_golden.py`); harness built (`eval/run_eval.py`); gate open.** Update as work progresses.
 Groq free tier is 8,000 tokens/min: pace eval runs at `EVAL_REQUEST_DELAY_MS=30000` (~2.3k-token prompts).
 
 Phase 2 requirements beyond §5:
@@ -74,7 +74,7 @@ uv run python scripts/resolve_models.py     # query provider /models → .env
 uv run python scripts/migrate.py            # apply migrations/*.sql in order
 uv run python scripts/seed_corpus.py        # demo tenants, users, corpus
 uv run uvicorn gateway.main:app --reload    # dev API server
-uv run python eval/run_eval.py --baseline   # eval run → eval/results/<ts>.json
+uv run python eval/run_eval.py --subset 25  # iterate; full run: no flag; --baseline "Phase N"
 uv run python scripts/measure_latency.py    # p50/p95 from query_log → EVAL_RESULTS.md
 ```
 

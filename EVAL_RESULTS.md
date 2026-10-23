@@ -81,5 +81,15 @@ was computed, and none needed replacing. `eval/verify_golden.py` enforces the ru
 claim is measured over all 20: "recall@6 on the buried-fact class rose from X% to Y%".
 q101 rewords q022 (tag `buried_fact_paraphrase`, outside the 20). The same question ranked its
 gold chunk 64th of 133 in one wording and 27th in the other: wording alone moves rank a lot.
+
+**Phase 5 ceiling, fixed before the harness was built:** 17 of 20 buried-fact items already
+rank in the top 6 under vector-only retrieval, tenant-wide and unfiltered. Maximum possible
+gain on this class is 3 items (15 points). A smaller gain is not a failure; a gain larger than
+this would mean the baseline moved for another reason and must be investigated.
+
+Phase 3's ACL filtering shrinks each user's candidate pool, so these ranks will improve on their
+own (q022 moves from 64th of 133 tenant-wide to 5th of 36 among chunks an engineer may read).
+That improvement belongs to Phase 3. Phase 5 is judged only against the Phase 4 baseline, never
+against the Phase 2 numbers, so a Phase 3 side effect cannot be read as a Phase 5 win.
 **Phase 5 success criterion:** with hybrid retrieval, `POST /v1/query` for this question must
 retrieve the chunk holding the on-call allowance within its top 6 and answer with a valid citation.

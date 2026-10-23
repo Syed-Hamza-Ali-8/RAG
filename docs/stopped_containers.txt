@@ -2,7 +2,7 @@ Containers from OTHER projects on the dev machine, stopped (never removed) to fr
 for Gateway eval runs (CLAUDE.md: ~3.8 GB shared; stop unrelated containers before eval runs).
 
 Restart them all:
-  docker start case_app_dev mysql_dev p6_fwd p6_suite p9_suite p10_suite redis_broker \
+  docker start case_app_dev mysql_dev p6_fwd p6_suite p9_fwd p9_suite p10_suite redis_broker \
     odoo_app odoo_db legal_konnect_backend legal_konnect_backend_test \
     legal_konnect_mysql legal_konnect_mysql_test
 
@@ -17,6 +17,7 @@ p6_suite                     alt_phase11                          no            
 p9_suite                     alt_phase11                          no               2026-10-23
 p10_suite                    alt_phase11                          no               2026-10-23
 p6_fwd                       (none)                               no               2026-10-23
+p9_fwd                       (none)                               no               2026-10-23
 redis_broker                 lk_case_management_system_project    always           2026-10-21, 2026-10-23
 odoo_app                     odoo-community                       always           2026-10-21, 2026-10-23
 odoo_db                      odoo-community                       always           2026-10-21, 2026-10-23
@@ -27,5 +28,5 @@ legal_konnect_mysql_test     legal_konnect                        unless-stopped
 
 Containers with restart policy "always" come back whenever Docker Desktop restarts, so
 check `docker ps` before every eval run. Those with "unless-stopped" stay stopped until
-started by hand. The alt_phase11 containers and p6_fwd were started after 2026-10-21 and
+started by hand. The alt_phase11 containers, p6_fwd and p9_fwd were started after 2026-10-21 and
 were stopped for the first time on 2026-10-23.

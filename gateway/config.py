@@ -62,6 +62,9 @@ class Settings(BaseSettings):
 
     # Eval / benchmark pacing to stay under free-tier rate limits (spec §6.2)
     eval_request_delay_ms: int = 30000
+    # LLM-as-judge (eval only). An explicit tier choice, like llm_tier; never switched at runtime.
+    eval_judge_tier: Tier = "large"
+    eval_judge_max_completion_tokens: int = 1500
 
     @property
     def database_dsn(self) -> str:

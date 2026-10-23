@@ -97,7 +97,7 @@ def check_structure(items: list[dict[str, Any]]) -> list[str]:
 
 
 async def tenant_chunks(conn: asyncpg.Connection, tenant: str) -> list[asyncpg.Record]:
-    return await conn.fetch(
+    rows: list[asyncpg.Record] = await conn.fetch(
         """
         SELECT d.slug || '#' || c.ordinal AS gid, c.content, c.token_count, c.allowed_roles,
                c.min_clearance, c.embedding
@@ -108,6 +108,7 @@ async def tenant_chunks(conn: asyncpg.Connection, tenant: str) -> list[asyncpg.R
         """,
         tenant,
     )
+    return rows
 
 
 def vector_ranks(query: list[float], pool: list[asyncpg.Record]) -> dict[str, int]:

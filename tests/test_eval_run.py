@@ -1,0 +1,195 @@
+"""Harness tests: subset selection, aggregation, labelling, and one end-to-end item with stub LLMs."""
+
+import argparse
+from collections import Counter
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import Any
+from uuid import UUID
+
+import asyncpg
+import httpx
+import pytest
+from openai.types.chat import ChatCompletionMessageParam
+
+from gateway.config import Settings
+from gateway.ingest.embedder import Embedder
+from gateway.ingest.pipeline import ingest_document
+from gateway.llm.provider import Completion
+from gateway.main import create_app
+from run_eval import aggregate, evaluate_item, load_golden, mode_name, run, select_subset, stratum
+from tests.conftest import StubLLM
+
+GOLDEN = load_golden()
+
+
+def test_subset_is_reproducible_and_stratified() -> None:
+    first, second = select_subset(GOLDEN, 25), select_subset(GOLDEN, 25)
+    assert [i["id"] for i in first] == [i["id"] for i in second]
+    assert len(first) == 25
+    assert Counter(stratum(i) for i in first) == {
+        "buried_fact": 5,
+        "single_other": 7,
+        "multi_hop": 6,
+        "unanswerable": 3,
+        "near_miss": 4,
+    }
+    pairs = Counter(i["pair"] for i in first if i["type"] == "near_miss")
+    assert set(pairs.values()) == {2}  # near-miss pairs are never split
+
+
+def test_only_the_fixed_subset_size_is_allowed() -> None:
+    with pytest.raises(ValueError):
+        select_subset(GOLDEN, 30)
+
+
+def test_mode_names_label_every_run() -> None:
+    assert mode_name(None, False) == "full"
+    assert mode_name(25, False) == "subset25"
+    assert mode_name(25, True) == "retrieval-subset25"
+    assert mode_name(None, True) == "retrieval-full"
+
+
+@pytest.mark.parametrize("flags", [{"subset": 25}, {"retrieval_only": True}])
+async def test_baseline_requires_a_full_judged_run(flags: dict[str, Any]) -> None:
+    args = argparse.Namespace(subset=None, retrieval_only=False, baseline="Phase 2", delay_ms=0, resume=None)
+    for k, v in flags.items():
+        setattr(args, k, v)
+    with pytest.raises(SystemExit, match="--baseline requires a full run"):
+        await run(args, GOLDEN, None)
+
+
+def rec(rid: str, rtype: str, recall6: float, refused: bool | None = None, **extra: Any) -> dict[str, Any]:
+    r: dict[str, Any] = {
+        "id": rid,
+        "type": rtype,
+        "tags": extra.pop("tags", []),
+        "pair": extra.pop("pair", None),
+    }
+    if rtype != "unanswerable":
+        r["retrieval"] = {
+            "recall@5": recall6,
+            "recall@6": recall6,
+            "recall@10": 1.0,
+            "all_hops@10": True,
+            "mrr": 0.5,
+            "ndcg@10": 0.6,
+        }
+    if refused is not None:
+        r["refused"] = refused
+    r.update(extra)
+    return r
+
+
+def verdict(correct: bool, faithful: bool = True) -> dict[str, Any]:
+    return {
+        "faithful": faithful,
+        "relevant": True,
+        "correct": correct,
+        "unsupported_claims": [],
+        "reason": "",
+    }
+
+
+def test_aggregate_rates_and_buried_group() -> None:
+    records = [
+        rec("a", "single_hop", 1.0, False, tags=["buried_fact"], judge=verdict(True)),
+        rec("b", "single_hop", 0.0, True, tags=["buried_fact"]),
+        rec("c", "multi_hop", 0.5, False, judge=verdict(False, faithful=False)),
+        rec("d", "unanswerable", 0, True),
+        rec("e", "unanswerable", 0, False, judge=verdict(False)),
+        rec("f", "near_miss", 1.0, False, pair="nm1", judge=verdict(True)),
+        rec("g", "near_miss", 1.0, False, pair="nm1", judge=verdict(False)),
+    ]
+    agg = aggregate(records)
+    assert agg["retrieval"]["buried_fact"]["recall@6"] == 0.5
+    assert agg["retrieval"]["all_answerable"]["n"] == 5
+    g = agg["generation"]
+    assert g["correct_refusal_unanswerable"] == {"rate": 0.5, "n": 2, "count": 1}
+    assert g["false_refusal_answerable"]["count"] == 1
+    assert g["correct_answerable"] == {"rate": 0.4, "n": 5, "count": 2}  # the refusal counts as not correct
+    assert g["near_miss_pairs_both_correct"] == {"rate": 0.0, "n": 1, "count": 0}
+    assert g["hallucinated_on_unanswerable"] == ["e"]
+    assert g["refused_answerable"] == ["b"]
+
+
+def test_retrieval_only_records_have_no_generation_block() -> None:
+    assert "generation" not in aggregate([rec("a", "single_hop", 1.0)])
+
+
+class StubJudge(StubLLM):
+    tier = "large"
+    model_id = "stub-judge"
+
+    async def complete(self, messages: list[ChatCompletionMessageParam]) -> Completion:
+        self.calls.append(messages)
+        return Completion(
+            '{"faithful": true, "relevant": true, "correct": true, "unsupported_claims": [], "reason": "ok"}',
+            self.model_id,
+            prompt_tokens=10,
+            completion_tokens=5,
+        )
+
+
+@pytest.fixture
+async def eval_app(
+    settings: Settings, pool: asyncpg.Pool, embedder: Embedder, tmp_path: Path, stub_llm: StubLLM
+) -> AsyncIterator[tuple[Any, httpx.AsyncClient]]:
+    async with pool.acquire() as conn:
+        tenant_id: UUID = await conn.fetchval(
+            "INSERT INTO tenants (slug, name) VALUES ('evalco', 'EvalCo') "
+            "ON CONFLICT (slug) DO UPDATE SET name = 'EvalCo' RETURNING id"
+        )
+    doc = tmp_path / "leave.md"
+    doc.write_text(
+        "# Leave Policy\n\n## Annual\n\nStaff receive 21 days of annual leave.\n", encoding="utf-8"
+    )
+    await ingest_document(pool, embedder, settings, tenant_id=tenant_id, slug="hr-leave-policy", path=doc)
+    app = create_app(settings, llm=stub_llm)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as client:
+            yield app, client
+
+
+async def test_evaluate_item_end_to_end_with_stubs(
+    eval_app: tuple[Any, httpx.AsyncClient], settings: Settings, stub_llm: StubLLM
+) -> None:
+    app, client = eval_app
+    item = {
+        "id": "t1",
+        "type": "single_hop",
+        "tags": [],
+        "tenant": "evalco",
+        "as_user": "hr@evalco.example",
+        "question": "How much annual leave do staff get?",
+        "expected_answer": "21 days.",
+        "evidence": [{"text": "21 days", "chunk_ids": ["hr-leave-policy#0"]}],
+        "gold_chunk_ids": ["hr-leave-policy#0"],
+    }
+    judge = StubJudge()
+    record = await evaluate_item(item, client, app.state.pool, app.state, judge, settings, delay_s=0)
+    assert record["retrieved"][0] == "hr-leave-policy#0"
+    assert record["retrieval"]["recall@6"] == 1.0
+    assert record["refused"] is False and record["citations"] == ["hr-leave-policy#0"]
+    assert record["judge"]["correct"] is True and record["judge"]["raw"].startswith("{")
+    assert record["query_log_id"] is not None
+    judged_text = str(judge.calls[0][1]["content"])
+    assert "21 days of annual leave" in judged_text and "<reference_answer>\n21 days.\n" in judged_text
+
+
+async def test_evaluate_item_retrieval_only_makes_no_llm_calls(
+    eval_app: tuple[Any, httpx.AsyncClient], settings: Settings, stub_llm: StubLLM
+) -> None:
+    app, client = eval_app
+    item = {
+        "id": "t2",
+        "type": "single_hop",
+        "tags": [],
+        "tenant": "evalco",
+        "question": "Annual leave?",
+        "expected_answer": "21 days.",
+        "evidence": [{"text": "21 days", "chunk_ids": ["hr-leave-policy#0"]}],
+    }
+    record = await evaluate_item(item, client, app.state.pool, app.state, None, settings, delay_s=0)
+    assert "refused" not in record and record["retrieval"]["recall@10"] == 1.0
+    assert stub_llm.calls == []
