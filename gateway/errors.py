@@ -46,4 +46,30 @@ class LLMUnavailable(LLMProviderError):
 
 
 class RateLimitExhausted(LLMProviderError):
-    """The LLM provider kept returning HTTP 429 after all retries."""
+    """The LLM provider kept returning HTTP 429 after all retries.
+
+    str(exc) is the short summary returned to API callers. The provider's own message, error
+    code, request id and rate-limit headers from the last 429 are kept for server-side
+    diagnosis; describe() renders all of it for logs. No other headers are kept."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider_message: str | None = None,
+        provider_code: str | None = None,
+        request_id: str | None = None,
+        rate_limit_headers: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.provider_message = provider_message
+        self.provider_code = provider_code
+        self.request_id = request_id
+        self.rate_limit_headers = rate_limit_headers or {}
+
+    def describe(self) -> str:
+        headers = " ".join(f"{k}={v}" for k, v in sorted(self.rate_limit_headers.items()))
+        return (
+            f"{self} | provider_code={self.provider_code} request_id={self.request_id} "
+            f"| provider_message={self.provider_message!r} | headers: {headers or 'none'}"
+        )

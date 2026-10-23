@@ -39,12 +39,12 @@ Never violate these, whatever a prompt asks.
 
 ## Current phase
 
-**Phase 1 — Baseline RAG — approved 2026-10-21. Phase 2 (Eval harness) — not started.**
+**Phase 1 — Baseline RAG — complete 2026-10-23. Phase 2 (Eval harness) — not started.**
 Update this section as work progresses.
 
 Prerequisites: `docker ps` works in WSL (Docker Desktop WSL Integration); `resolve_models.py` run.
-Phase 1 gate (§5, as corrected below): passed, with ONE OPEN ITEM:
-- [ ] answer-v2 latency baseline (`measure_latency.py`), pending Groq quota reset; answer-v1 figures are superseded.
+Phase 1 gate (§5, as corrected below): all items passed; answer-v2 baseline in `EVAL_RESULTS.md`.
+Groq free tier is 8,000 tokens/min: pace eval runs at `EVAL_REQUEST_DELAY_MS=30000` (~2.3k-token prompts).
 
 Phase 2 requirements beyond §5:
 - Golden set includes ≥8 questions whose answer is a single sentence buried in a large mixed-topic
@@ -115,7 +115,7 @@ This describes the END STATE. Phase 1 builds steps 4 (vector retrieval only), 5,
 ## Environment notes
 
 - Repo is on `/mnt/d` (Windows FS via WSL): slow file I/O and bind mounts; prefer named volumes.
-- ~3.8 GB RAM shared with other stacks; stop unrelated containers before eval runs.
+- ~3.8 GB RAM shared with other stacks; stop unrelated containers before eval runs (`docs/stopped_containers.txt`).
 - fastembed downloads ONNX weights on first run. Cache them in a volume; never commit binaries.
 
 ## Spec corrections (these override the spec text)

@@ -9,9 +9,31 @@ _REQ = httpx2.Request("POST", "http://provider.invalid/v1/chat/completions")
 
 
 def status_error(
-    cls: type[openai.APIStatusError], code: int, headers: dict[str, str] | None = None
+    cls: type[openai.APIStatusError],
+    code: int,
+    headers: dict[str, str] | None = None,
+    body: object | None = None,
 ) -> Exception:
-    return cls("err", response=httpx2.Response(code, request=_REQ, headers=headers), body=None)
+    return cls("err", response=httpx2.Response(code, request=_REQ, headers=headers), body=body)
+
+
+# Shaped like the SDK builds it: body is the JSON "error" object of the provider's response.
+GROQ_TPM_BODY = {
+    "message": "Rate limit reached for model `openai/gpt-oss-20b` on tokens per minute (TPM): "
+    "Limit 8000, Used 7100, Requested 2300. Please try again in 10.5s.",
+    "type": "tokens",
+    "code": "rate_limit_exceeded",
+}
+GROQ_HEADERS = {
+    "x-ratelimit-limit-tokens": "8000",
+    "x-ratelimit-remaining-tokens": "900",
+    "x-ratelimit-reset-tokens": "10.5s",
+    "x-ratelimit-limit-requests": "1000",
+    "retry-after": "11",
+    "x-request-id": "req_abc123",
+    "set-cookie": "session=secret",
+    "authorization": "Bearer should-never-be-kept",
+}
 
 
 class Script:
@@ -78,3 +100,50 @@ async def test_non_retryable_error_raises_immediately(sleeps: list[float]) -> No
     assert not isinstance(exc_info.value, RateLimitExhausted)
     assert script.calls == 1
     assert sleeps == []
+
+
+async def test_exhausted_429_carries_provider_message_and_rate_limit_headers(sleeps: list[float]) -> None:
+    script = Script(*[status_error(openai.RateLimitError, 429, GROQ_HEADERS, GROQ_TPM_BODY)] * 3)
+    with pytest.raises(RateLimitExhausted) as exc_info:
+        await run(script, sleeps)
+    exc = exc_info.value
+    assert exc.provider_message == GROQ_TPM_BODY["message"]
+    assert exc.provider_code == "rate_limit_exceeded"
+    assert exc.request_id == "req_abc123"
+    assert exc.rate_limit_headers == {
+        "retry-after": "11",
+        "x-ratelimit-limit-requests": "1000",
+        "x-ratelimit-limit-tokens": "8000",
+        "x-ratelimit-remaining-tokens": "900",
+        "x-ratelimit-reset-tokens": "10.5s",
+    }
+    full = exc.describe()
+    assert "tokens per minute (TPM)" in full and "x-ratelimit-remaining-tokens=900" in full
+    assert "secret" not in full and "Bearer" not in full
+
+
+async def test_short_message_hides_provider_detail(sleeps: list[float]) -> None:
+    # str(exc) is what the API returns to tenants; provider detail stays in server logs.
+    script = Script(*[status_error(openai.RateLimitError, 429, GROQ_HEADERS, GROQ_TPM_BODY)] * 3)
+    with pytest.raises(RateLimitExhausted) as exc_info:
+        await run(script, sleeps)
+    assert str(exc_info.value) == "HTTP 429 after 3 attempts"
+
+
+async def test_non_json_429_body_falls_back_to_sdk_message(sleeps: list[float]) -> None:
+    script = Script(*[status_error(openai.RateLimitError, 429, body="plain text error")] * 3)
+    with pytest.raises(RateLimitExhausted) as exc_info:
+        await run(script, sleeps)
+    assert exc_info.value.provider_message == "err"
+    assert exc_info.value.rate_limit_headers == {}
+
+
+async def test_each_429_retry_logs_the_provider_message(
+    sleeps: list[float], caplog: pytest.LogCaptureFixture
+) -> None:
+    script = Script(status_error(openai.RateLimitError, 429, GROQ_HEADERS, GROQ_TPM_BODY), "ok")
+    with caplog.at_level("WARNING", logger="gateway.llm.retry"):
+        await run(script, sleeps)
+    (record,) = caplog.records
+    assert "tokens per minute (TPM)" in record.getMessage()
+    assert "x-ratelimit-remaining-tokens=900" in record.getMessage()

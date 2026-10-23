@@ -178,3 +178,22 @@ async def test_request_validation(client: httpx.AsyncClient) -> None:
     assert (
         await client.post("/v1/query", json={"tenant": "alpha", "question": "q", "top_k": 99})
     ).status_code == 422
+
+
+async def test_rate_limit_response_does_not_leak_provider_detail(
+    client: httpx.AsyncClient, stub_llm: StubLLM
+) -> None:
+    from gateway.errors import RateLimitExhausted
+
+    def boom(_: object) -> str:
+        raise RateLimitExhausted(
+            "HTTP 429 after 5 attempts",
+            provider_message="Rate limit reached in organization org_SECRETORG on tokens per minute",
+            rate_limit_headers={"x-ratelimit-remaining-tokens": "0"},
+        )
+
+    stub_llm.reply = boom
+    r = await client.post("/v1/query", json={"tenant": "alpha", "question": "How much annual leave?"})
+    assert r.status_code == 503
+    assert r.json() == {"error": "llm_rate_limited", "detail": "HTTP 429 after 5 attempts"}
+    assert "org_SECRETORG" not in r.text

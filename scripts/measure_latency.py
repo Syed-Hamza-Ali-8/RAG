@@ -103,8 +103,13 @@ async def run(delay_ms: int, rounds: int) -> None:
                     r = await client.post("/v1/query", json={"tenant": tenant, "question": question})
                     retries_per_request.append(counter.count - before)
                     if r.status_code != 200:
+                        # Stop at the first failure: a wedged run measures nothing. The full
+                        # provider detail (429 body, rate-limit headers) is in the server log line.
                         failures.append(f"{r.status_code} {question}: {r.text[:200]}")
+                        break
                     await asyncio.sleep(delay_s)
+                if failures:
+                    break
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -114,7 +119,10 @@ async def run(delay_ms: int, rounds: int) -> None:
         )
     await pool.close()
     if failures:
-        sys.exit("requests failed; no measurement recorded:\n" + "\n".join(failures))
+        sys.exit(
+            f"stopped after {len(retries_per_request)} request(s); no measurement recorded:\n"
+            + "\n".join(failures)
+        )
     if len(rows) != len(retries_per_request):
         sys.exit(f"expected {len(retries_per_request)} query_log rows, found {len(rows)}")
 

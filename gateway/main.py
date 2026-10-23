@@ -53,7 +53,7 @@ def create_app(settings: Settings | None = None, *, llm: LLM | None = None) -> F
 
     @app.exception_handler(RateLimitExhausted)
     async def _rate_limited(_: Request, exc: RateLimitExhausted) -> JSONResponse:
-        log.error("rate limit exhausted: %s", exc)
+        log.error("rate limit exhausted: %s", exc.describe())  # full detail stays server-side
         return JSONResponse(status_code=503, content={"error": "llm_rate_limited", "detail": str(exc)})
 
     @app.exception_handler(LLMProviderError)
