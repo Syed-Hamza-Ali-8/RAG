@@ -55,7 +55,7 @@ select = ["E", "F", "W", "I", "B", "UP", "S608", "ASYNC", "RUF"]
 
 [tool.ruff.lint.isort]
 # eval/ modules are imported top-level (pytest pythonpath and script dir).
-known-first-party = ["gateway", "metrics", "judge", "run_eval", "verify_golden", "spotcheck", "calibrate_judge"]
+known-first-party = ["gateway", "metrics", "judge", "run_eval", "verify_golden", "spotcheck", "calibrate_judge", "verify_adversarial"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S"]
