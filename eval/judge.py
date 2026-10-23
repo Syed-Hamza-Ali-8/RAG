@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from openai.types.chat import ChatCompletionMessageParam
 
 from gateway.errors import GatewayError
-from gateway.llm.provider import LLM
+from gateway.llm.provider import LLM, Completion
 
 JUDGE_PROMPT_VERSION = "judge-v1"
 
@@ -100,9 +100,9 @@ def parse_verdict(text: str) -> Verdict:
     return Verdict(flags["faithful"], flags["relevant"], flags["correct"], claims, reason)  # type: ignore[arg-type]
 
 
-async def judge(
+async def call_judge(
     llm: LLM, question: str, reference_answer: str, sources: Sequence[Source], answer: str
-) -> tuple[Verdict, str]:
-    """Returns (verdict, raw judge output). Raises JudgeParseError on malformed output."""
-    completion = await llm.complete(build_judge_messages(question, reference_answer, sources, answer))
-    return parse_verdict(completion.text), completion.text
+) -> Completion:
+    """One judge call. Parse the result with parse_verdict; keeping the completion lets callers log
+    token usage even when the output turns out to be malformed."""
+    return await llm.complete(build_judge_messages(question, reference_answer, sources, answer))

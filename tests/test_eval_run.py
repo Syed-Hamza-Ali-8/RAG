@@ -17,7 +17,18 @@ from gateway.ingest.embedder import Embedder
 from gateway.ingest.pipeline import ingest_document
 from gateway.llm.provider import Completion
 from gateway.main import create_app
-from run_eval import aggregate, evaluate_item, load_golden, mode_name, run, select_subset, stratum
+from run_eval import (
+    aggregate,
+    budget_check,
+    evaluate_item,
+    finalize_meta,
+    load_golden,
+    mode_name,
+    read_partial,
+    run,
+    select_subset,
+    stratum,
+)
 from tests.conftest import StubLLM
 
 GOLDEN = load_golden()
@@ -173,6 +184,15 @@ async def test_evaluate_item_end_to_end_with_stubs(
     assert record["refused"] is False and record["citations"] == ["hr-leave-policy#0"]
     assert record["judge"]["correct"] is True and record["judge"]["raw"].startswith("{")
     assert record["query_log_id"] is not None
+    async with app.state.pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT purpose, model_used, prompt_tokens, completion_tokens, prompt_version, answer_raw "
+            "FROM query_log WHERE id = $1",
+            record["judge_query_log_id"],
+        )
+    assert row["purpose"] == "eval_judge" and row["model_used"] == "stub-judge"
+    assert (row["prompt_tokens"], row["completion_tokens"]) == (10, 5)
+    assert row["prompt_version"].startswith("judge-v") and row["answer_raw"].startswith("{")
     judged_text = str(judge.calls[0][1]["content"])
     assert "21 days of annual leave" in judged_text and "<reference_answer>\n21 days.\n" in judged_text
 
@@ -193,3 +213,43 @@ async def test_evaluate_item_retrieval_only_makes_no_llm_calls(
     record = await evaluate_item(item, client, app.state.pool, app.state, None, settings, delay_s=0)
     assert "refused" not in record and record["retrieval"]["recall@10"] == 1.0
     assert stub_llm.calls == []
+
+
+def test_finalize_meta_keeps_original_start_and_accumulates_sessions() -> None:
+    meta = {"run_id": "r1", "started_utc": "2026-10-23T17:15:25+00:00", "git_commit": "a9784a8"}
+    sessions = [
+        {
+            "started_utc": "2026-10-23T17:15:25+00:00",
+            "elapsed_min": 41.5,
+            "git_commit": "a9784a8",
+            "stopped": "429",
+        },
+        {
+            "started_utc": "2026-10-23T18:05:15+00:00",
+            "elapsed_min": 58.1,
+            "git_commit": "a9784a8-dirty",
+            "stopped": None,
+        },
+    ]
+    out = finalize_meta(meta, sessions, "2026-10-23T19:03:11+00:00")
+    assert out["started_utc"] == "2026-10-23T17:15:25+00:00"
+    assert out["elapsed_min"] == 99.6
+    assert out["git_commits"] == ["a9784a8", "a9784a8-dirty"]
+    assert out["finished_utc"] == "2026-10-23T19:03:11+00:00" and len(out["sessions"]) == 2
+
+
+def test_read_partial_separates_records_from_session_lines(tmp_path: Path) -> None:
+    f = tmp_path / "x.partial.jsonl"
+    f.write_text(
+        '{"meta": {"run_id": "r1"}}\n{"id": "q001"}\n{"session": {"elapsed_min": 3.0}}\n{"id": "q002"}\n',
+        encoding="utf-8",
+    )
+    meta, records, sessions = read_partial(f)
+    assert meta == {"run_id": "r1"}
+    assert [r["id"] for r in records] == ["q001", "q002"]
+    assert sessions == [{"elapsed_min": 3.0}]
+
+
+def test_budget_check() -> None:
+    assert budget_check(used=150_000, per_call=2500, calls=20, limit=200_000) == (50_000, 50_000, True)
+    assert budget_check(used=150_000, per_call=2500, calls=21, limit=200_000) == (52_500, 50_000, False)

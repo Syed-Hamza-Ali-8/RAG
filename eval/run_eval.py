@@ -34,11 +34,12 @@ import httpx
 from gateway.config import Settings, get_settings
 from gateway.errors import LLMProviderError
 from gateway.llm.prompts import PROMPT_VERSION
-from gateway.llm.provider import OpenAICompatibleLLM
+from gateway.llm.provider import Completion, OpenAICompatibleLLM
 from gateway.main import create_app
+from gateway.query_log import QueryLogEntry, write_query_log
 from gateway.rag import resolve_tenant
 from gateway.retrieval.vector import RetrievedChunk, vector_search
-from judge import JUDGE_PROMPT_VERSION, JudgeParseError, Source, judge
+from judge import JUDGE_PROMPT_VERSION, JudgeParseError, Source, call_judge, parse_verdict
 from metrics import all_hops_at_k, hop_ranks, ndcg_at_k, recall_at_k, reciprocal_rank
 
 EVAL_DIR = Path(__file__).resolve().parent
@@ -49,6 +50,8 @@ BASELINES_DIR = EVAL_DIR / "baselines"
 EVAL_RESULTS_MD = ROOT / "EVAL_RESULTS.md"
 
 RETRIEVE_K = 10
+# Pre-flight fallback when query_log has no recent calls to average over (tokens per call).
+DEFAULT_TOKENS_PER_CALL = {"query": 2600, "eval_judge": 4000}
 SUBSET_SEED = "gateway-subset-v1"
 # Fixed allocation for --subset 25, proportional to the full set (strata sizes 20/30/25/15/10).
 # Near-miss items are drawn as whole pairs. Changing this changes the subset: bump SUBSET_SEED.
@@ -203,6 +206,69 @@ def gid(chunk: RetrievedChunk) -> str:
     return f"{chunk.document_slug}#{chunk.ordinal}"
 
 
+async def log_judge_call(
+    pool: asyncpg.Pool, tenant_id: Any, judge_llm: OpenAICompatibleLLM, completion: Completion, llm_ms: int
+) -> int:
+    """Record a judge call in query_log (purpose 'eval_judge') so its tokens count against the judge
+    model's daily budget in the pre-flight check. answer_raw holds the raw judge output."""
+    async with pool.acquire() as conn:
+        await write_query_log(
+            conn,
+            QueryLogEntry(
+                tenant_id=tenant_id,
+                route_tier=judge_llm.tier,
+                model_used=completion.model,
+                prompt_tokens=completion.prompt_tokens,
+                completion_tokens=completion.completion_tokens,
+                retrieval_ms=0,
+                llm_ms=llm_ms,
+                total_ms=llm_ms,
+                refused=False,
+                answer_raw=completion.text,
+                citations_valid=None,
+                citations_rejected=None,
+                prompt_version=JUDGE_PROMPT_VERSION,
+                purpose="eval_judge",
+            ),
+        )
+        log_id: int = await conn.fetchval(
+            "SELECT max(id) FROM query_log WHERE tenant_id = $1 AND purpose = 'eval_judge'", tenant_id
+        )
+    return log_id
+
+
+async def judge_and_log(
+    pool: asyncpg.Pool,
+    tenant_id: Any,
+    judge_llm: OpenAICompatibleLLM,
+    question: str,
+    reference_answer: str,
+    sources: list[Source],
+    answer: str,
+    delay_s: float,
+) -> dict[str, Any]:
+    """One paced judge call, always logged. Returns {"judge": ...} or {"judge_error": ...}, plus the
+    query_log id. Raises HarnessStopped on provider failure (rate limits included)."""
+    started = time.perf_counter()
+    try:
+        completion = await call_judge(judge_llm, question, reference_answer, sources, answer)
+    except LLMProviderError as exc:
+        detail = exc.describe() if hasattr(exc, "describe") else str(exc)
+        raise HarnessStopped(f"judge call failed: {detail}") from exc
+    llm_ms = round((time.perf_counter() - started) * 1000)
+    await asyncio.sleep(delay_s)
+    out: dict[str, Any] = {
+        "judge_query_log_id": await log_judge_call(pool, tenant_id, judge_llm, completion, llm_ms)
+    }
+    try:
+        verdict = parse_verdict(completion.text)
+        out["judge"] = {**verdict.__dict__, "raw": completion.text}
+    except JudgeParseError as exc:
+        out["judge_error"] = str(exc)
+        out["judge_raw"] = completion.text
+    return out
+
+
 async def evaluate_item(
     item: dict[str, Any],
     client: httpx.AsyncClient,
@@ -260,18 +326,63 @@ async def evaluate_item(
 
     sources = [Source(f"S{n}", c.document_title, c.content) for n, c in enumerate(top, 1)]
     try:
-        verdict, raw = await judge(
-            judge_llm, item["question"], item["expected_answer"], sources, body["answer"]
+        record.update(
+            await judge_and_log(
+                pool,
+                tenant_id,
+                judge_llm,
+                item["question"],
+                item["expected_answer"],
+                sources,
+                body["answer"],
+                delay_s,
+            )
         )
-        record["judge"] = {**verdict.__dict__, "raw": raw}
-    except JudgeParseError as exc:
-        record["judge_error"] = str(exc)
-    except LLMProviderError as exc:
-        detail = exc.describe() if hasattr(exc, "describe") else str(exc)
-        raise HarnessStopped(f"{item['id']}: judge call failed: {detail}") from exc
-    finally:
-        await asyncio.sleep(delay_s)
+    except HarnessStopped as exc:
+        raise HarnessStopped(f"{item['id']}: {exc}") from exc
     return record
+
+
+def budget_check(used: int, per_call: float, calls: int, limit: int) -> tuple[int, int, bool]:
+    """(needed, remaining, fits) for one model's rolling 24-hour token budget."""
+    needed = round(per_call * calls)
+    remaining = limit - used
+    return needed, remaining, needed <= remaining
+
+
+async def preflight(
+    conn: asyncpg.Connection, limit: int, plan: dict[str, list[tuple[str, int]]]
+) -> list[str]:
+    """plan: model -> [(purpose, calls)]. Prints each model's 24h use and the run's estimated need.
+    Returns the models whose budget the run would exceed. query_log only sees calls made by this
+    stack, and cannot tell provider accounts apart, so treat the result as an estimate."""
+    problems = []
+    print(f"pre-flight: provider daily cap {limit:,} tokens per model (rolling 24 h, from query_log)")
+    for model, uses in plan.items():
+        used = await conn.fetchval(
+            "SELECT coalesce(sum(prompt_tokens + completion_tokens), 0) FROM query_log "
+            "WHERE model_used = $1 AND ts > now() - interval '24 hours'",
+            model,
+        )
+        needed_total = 0
+        for purpose, calls in uses:
+            avg = await conn.fetchval(
+                "SELECT avg(prompt_tokens + completion_tokens) FROM query_log "
+                "WHERE model_used = $1 AND purpose = $2 AND ts > now() - interval '7 days'",
+                model,
+                purpose,
+            )
+            per_call = float(avg) if avg is not None else DEFAULT_TOKENS_PER_CALL[purpose]
+            needed_total += round(per_call * calls)
+            print(f"  {model}: {calls} {purpose} calls x ~{per_call:,.0f} tokens")
+        _, remaining, fits = budget_check(int(used), needed_total, 1, limit)
+        print(
+            f"  {model}: used {int(used):,} in last 24 h, remaining {remaining:,}, "
+            f"this run needs ~{needed_total:,} -> {'OK' if fits else 'WOULD EXCEED'}"
+        )
+        if not fits:
+            problems.append(model)
+    return problems
 
 
 def write_baseline_section(label: str, result: dict[str, Any], baseline_file: Path) -> None:
@@ -374,20 +485,52 @@ def print_comparison(current: dict[str, Any], previous: dict[str, Any] | None) -
         print("WARNING: golden set changed since the previous run; deltas are not comparable.")
 
 
-def read_partial(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return json.loads(lines[0])["meta"], [json.loads(line) for line in lines[1:] if line.strip()]
+Partial = tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]
+# Settings a resumed run must share with the session that started it, or results are not comparable.
+RESUME_MUST_MATCH = (
+    "golden_hash",
+    "llm_tier",
+    "prompt_version",
+    "judge_tier",
+    "judge_model",
+    "judge_prompt_version",
+    "top_k",
+    "retrieve_k",
+)
+
+
+def read_partial(path: Path) -> Partial:
+    """(original meta, item records, session records). Session lines are {"session": {...}}."""
+    lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    meta = lines[0]["meta"]
+    records = [line for line in lines[1:] if "session" not in line]
+    sessions = [line["session"] for line in lines[1:] if "session" in line]
+    return meta, records, sessions
+
+
+def finalize_meta(meta: dict[str, Any], sessions: list[dict[str, Any]], finished_utc: str) -> dict[str, Any]:
+    """Keep the original start time; accumulate elapsed time and commits across all sessions."""
+    out = dict(meta)
+    out["sessions"] = sessions
+    out["finished_utc"] = finished_utc
+    out["elapsed_min"] = round(sum(s["elapsed_min"] for s in sessions), 1)
+    out["git_commits"] = [s["git_commit"] for s in sessions]
+    return out
 
 
 async def run(
     args: argparse.Namespace,
     golden: list[dict[str, Any]],
-    resumed: tuple[dict[str, Any], list[dict[str, Any]]] | None,
+    resumed: Partial | None,
+    force: bool = False,
 ) -> int:
     settings = get_settings()
     resume_records: list[dict[str, Any]] = []
+    prior_sessions: list[dict[str, Any]] = []
+    original_meta: dict[str, Any] | None = None
     if resumed:
-        meta, resume_records = resumed
+        original_meta, resume_records, prior_sessions = resumed
+        meta = original_meta
         args.subset, args.retrieval_only, args.baseline = (
             meta["subset"],
             meta["retrieval_only"],
@@ -424,12 +567,26 @@ async def run(
     records = list(resume_records)
     started = time.time()
     stopped: str | None = None
+    session_started = datetime.now(UTC).isoformat(timespec="seconds")
     async with app.router.lifespan_context(app):
         pool = app.state.pool
         async with pool.acquire() as conn:
             await resolve_gold_uuids(conn, items)
             corpus_chunks = await conn.fetchval("SELECT count(*) FROM chunks")
-        meta = {
+            if judge_llm is not None:
+                gen_model = settings.provider(settings.llm_tier).model_id
+                plan: dict[str, list[tuple[str, int]]] = defaultdict(list)
+                plan[gen_model].append(("query", len(todo)))
+                plan[judge_llm.model_id].append(
+                    ("eval_judge", sum(i["type"] != "unanswerable" for i in todo))
+                )
+                over = await preflight(conn, settings.llm_daily_token_limit, plan)
+                if over and not force:
+                    raise SystemExit(
+                        f"pre-flight: this run would exceed the daily token budget of {over}; it would stop "
+                        "partway. Run --subset 25, wait for the rolling window, or pass --force."
+                    )
+        fresh_meta = {
             "run_id": run_id,
             "mode": mode,
             "subset": args.subset,
@@ -449,8 +606,17 @@ async def run(
             "top_k": settings.retrieval_top_k,
             "retrieve_k": RETRIEVE_K,
             "delay_ms": int(delay_s * 1000),
-            "started_utc": datetime.now(UTC).isoformat(timespec="seconds"),
+            "started_utc": session_started,
         }
+        if original_meta is not None:
+            changed = [k for k in RESUME_MUST_MATCH if original_meta.get(k) != fresh_meta[k]]
+            if changed:
+                raise SystemExit(
+                    f"cannot resume: {changed} differ from the original session; start a new run"
+                )
+            meta = original_meta
+        else:
+            meta = fresh_meta
         RESULTS_DIR.mkdir(exist_ok=True)
         if not args.resume:
             partial.write_text(json.dumps({"meta": meta}) + "\n", encoding="utf-8")
@@ -478,14 +644,26 @@ async def run(
     if judge_llm:
         await judge_llm.aclose()
 
+    session_finished = datetime.now(UTC).isoformat(timespec="seconds")
+    session: dict[str, Any] = {
+        "started_utc": session_started,
+        "finished_utc": session_finished,
+        "elapsed_min": round((time.time() - started) / 60, 1),
+        "items_done": len(records) - len(resume_records),
+        "git_commit": git_commit(),
+        "stopped": stopped,
+    }
+    with partial.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"session": session}) + "\n")
+    sessions = [*prior_sessions, session]
+
     if stopped:
         print(f"\nSTOPPED: {stopped}\n{len(records)}/{len(items)} items saved in {partial}")
         print(f"Resume with: uv run python eval/run_eval.py --resume {partial.relative_to(ROOT)}")
         return 2
 
+    meta = finalize_meta(meta, sessions, session_finished)
     meta["generator_model"] = next((r["model"] for r in records if r.get("model")), None)
-    meta["finished_utc"] = datetime.now(UTC).isoformat(timespec="seconds")
-    meta["elapsed_min"] = round((time.time() - started) / 60, 1)
     result = {"meta": meta, "aggregate": aggregate(records), "records": records}
     out = RESULTS_DIR / f"{run_id}.json"
     out.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -514,9 +692,12 @@ def main() -> None:
     parser.add_argument("--baseline", metavar="LABEL", help='record a full run as a baseline, e.g. "Phase 2"')
     parser.add_argument("--delay-ms", type=int, help="override EVAL_REQUEST_DELAY_MS")
     parser.add_argument("--resume", metavar="PARTIAL", help="continue a stopped run from its .partial.jsonl")
+    parser.add_argument(
+        "--force", action="store_true", help="start even if the pre-flight budget check fails"
+    )
     args = parser.parse_args()
     resumed = read_partial(Path(args.resume)) if args.resume else None
-    sys.exit(asyncio.run(run(args, load_golden(), resumed)))
+    sys.exit(asyncio.run(run(args, load_golden(), resumed, force=args.force)))
 
 
 if __name__ == "__main__":
