@@ -41,14 +41,14 @@ Never violate these, whatever a prompt asks.
 
 **Phase 1 complete 2026-10-23. Phase 2 (Eval harness) in progress: golden set written and
 verified (`eval/verify_golden.py`); harness built (`eval/run_eval.py`); gate open.** Update as work progresses.
-Groq free tier is 8,000 tokens/min: pace eval runs at `EVAL_REQUEST_DELAY_MS=30000` (~2.3k-token prompts).
+Groq free tier: 8,000 tokens/min (pace at `EVAL_REQUEST_DELAY_MS=30000`) AND 200,000 tokens/day per model
+(rolling 24 h, not in headers). A full 100-item run needs ~252k generator tokens: it spans >1 day via `--resume`.
 
 Phase 2 requirements beyond §5:
 - Golden set: 20 `buried_fact` items, selected on structure only, never on retrieval rank (rule in `EVAL_RESULTS.md`).
 - Golden-set schema extension beyond §5 (approved): `as_user`, `as_clearance`, `evidence`, `tags`, `pair`,
   `absent_terms`, `paraphrase_of`. Items run as real seeded users so Phase 3 evals use the real auth path.
-- `run_eval.py --subset N` = fixed, stratified, reproducible sample for iteration; label every results file
-  subset or full; only full runs may enter `EVAL_RESULTS.md`.
+- `run_eval.py --subset 25`: fixed stratified sample for iteration; only full runs may enter `EVAL_RESULTS.md`.
 - Re-run the full golden set at the end of every phase that can move the numbers; record each as its own
   labelled baseline. Compare each phase with the previous phase's baseline (Phase 5 vs Phase 4, never Phase 2).
 - Diagnose every refusal from `query_log.answer_raw` + `citations_valid`/`citations_rejected`; `answer_raw`

@@ -23,6 +23,47 @@ Measured 2026-10-23 11:11 UTC by `uv run python scripts/measure_latency.py` from
 | Retrieval (embed + vector search) | 72 | 527 | 172 |
 | LLM call | 929 | 1633 | 1000 |
 
+## Golden set baseline — Phase 2
+
+Full run of all 100 golden-set items, 2026-10-23T19:03:11+00:00, by `uv run python eval/run_eval.py --baseline "Phase 2"`. Results: `eval/baselines/phase-2.json`.
+
+- Generator: `openai/gpt-oss-20b` (tier `small`), prompt `answer-v2`; judge: `openai/gpt-oss-120b` (tier `large`), prompt `judge-v1`
+- Retrieval: vector-only, tenant-wide, no ACL filter; answers use top 6; metrics at top 10
+- Golden set hash `d58769e8532dd8e0`; corpus 251 chunks; commit `a9784a8-dirty`
+
+| Retrieval (answerable items) | n | recall@5 | recall@6 | recall@10 | all-hops@10 | MRR | nDCG@10 |
+|---|---|---|---|---|---|---|---|
+| all_answerable | 85 | 72.9% | 77.1% | 84.1% | 76.5% | 0.636 | 0.660 |
+| single_hop | 50 | 76.0% | 82.0% | 88.0% | 88.0% | 0.635 | 0.693 |
+| buried_fact | 20 | 80.0% | 85.0% | 90.0% | 90.0% | 0.640 | 0.701 |
+| multi_hop | 25 | 56.0% | 58.0% | 70.0% | 44.0% | 0.617 | 0.554 |
+| near_miss | 10 | 100.0% | 100.0% | 100.0% | 100.0% | 0.683 | 0.762 |
+
+| Generation | rate | count / n |
+|---|---|---|
+| Refused unanswerable (hallucination guard) | 100.0% | 15 / 15 |
+| Refused answerable (false refusals) | 11.8% | 10 / 85 |
+| Faithful (judge, answered items) | 100.0% | 75 / 75 |
+| Relevant (judge, answered items) | 100.0% | 75 / 75 |
+| Correct (judge; refusals count as not correct) | 85.9% | 73 / 85 |
+| Near-miss pairs with both answers correct | 100.0% | 5 / 5 |
+
+Judge errors: 0. Hallucinated on unanswerable: none. Refused answerable: ['q022', 'q042', 'q101', 'q106', 'q051', 'q058', 'q060', 'q062', 'q064', 'q066'].
+
+**Provenance and caveats (added by hand; every figure is readable from `eval/baselines/phase-2.json`):**
+- Run in two sessions with `--resume`. Items 1–35 ran on 2026-10-23 from 17:15 UTC on one Groq account
+  until it hit Groq's 200,000 tokens/day cap at q047; items 36–100 ran 18:05–19:03 UTC on a second Groq
+  account. Same models, temperature 0, same code. Zero 429 retries and zero judge errors after the resume.
+- Harness defect: on resume the run metadata was rebuilt, so `started_utc`, `elapsed_min` (58.1) and
+  `git_commit` describe the resumed session only. The code was `a9784a8`; "-dirty" was uncommitted
+  `CLAUDE.md` and spot-check files, not code.
+- All 10 refused answerable items were retrieval misses, never model refusals with the evidence in hand:
+  per-item `hop_ranks` show at least one hop outside the top 6 for every one (4 single-hop, 6 multi-hop).
+- Faithful and relevant are 100% (75/75). Treat them as unverified until the hand spot-check of the judge
+  is scored: q029 answered "20 April 2027" (the clearance meeting, not the report deadline) and the judge
+  still marked it faithful.
+- Buried-fact recall@6 is 85% (17/20), exactly the ceiling fixed before the harness was built.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
