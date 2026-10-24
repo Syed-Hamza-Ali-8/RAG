@@ -1,6 +1,6 @@
 """Diagnose a refused (or wrong) answer: was it the retriever, the model or the citation check?
 
-    uv run python scripts/diagnose_refusals.py --tenant acme \\
+    uv run python scripts/diagnose_refusals.py --tenant acme --as-user engineer@acme.example \\
         --question "What is the on-call allowance per week?" \\
         [--log-id 94] [--needle "PKR 15,000"] [--llm]
 
@@ -19,10 +19,10 @@ import asyncio
 
 from gateway.config import get_settings
 from gateway.db import create_pool
+from gateway.deps import auth_for_email
 from gateway.ingest.embedder import Embedder
 from gateway.llm.prompts import PROMPT_VERSION, build_messages
 from gateway.llm.provider import OpenAICompatibleLLM
-from gateway.rag import resolve_tenant
 from gateway.retrieval.vector import vector_search
 from gateway.security.guardrails import check_citations
 
@@ -34,12 +34,16 @@ async def main(args: argparse.Namespace) -> None:
     pool = await create_pool(settings.database_dsn)
     try:
         async with pool.acquire() as conn:
-            tenant_id = await resolve_tenant(conn, args.tenant)
+            auth = await auth_for_email(conn, args.tenant, args.as_user)
+            tenant_id = auth.tenant_id
             query_vec = await embedder.embed_query(args.question)
-            chunks = await vector_search(conn, tenant_id=tenant_id, query_embedding=query_vec, top_k=top_k)
+            chunks = await vector_search(conn, acl_filter=auth.acl(), query_embedding=query_vec, top_k=top_k)
             total = await conn.fetchval("SELECT count(*) FROM chunks WHERE tenant_id = $1", tenant_id)
 
-            print(f"Q [{args.tenant}]: {args.question}")
+            print(
+                f"Q [{args.tenant} as {args.as_user}, roles {list(auth.roles)}, "
+                f"clearance {auth.clearance}]: {args.question}"
+            )
             print(f"\nTop {top_k} of {total} chunks:")
             for n, c in enumerate(chunks, 1):
                 print(f"  S{n}  {c.score:.4f}  {c.document_slug}#{c.ordinal}  [{c.heading_path}]")
@@ -80,11 +84,26 @@ async def main(args: argparse.Namespace) -> None:
                     query_vec,
                     args.needle,
                 )
-                print(f"\nChunks containing {args.needle!r}:")
+                # Which chunks this user may read, decided by the real SQL predicate (not re-implemented).
+                readable = {
+                    f"{c.document_slug}#{c.ordinal}"
+                    for c in await vector_search(
+                        conn, acl_filter=auth.acl(), query_embedding=query_vec, top_k=total
+                    )
+                }
+                print(f"\nChunks containing {args.needle!r} (ranked tenant-wide, without the ACL filter):")
                 if not hits:
                     print("  none: the answer text is not in this tenant's corpus")
                 for h in hits:
-                    marker = "retrieved" if h["rank"] <= top_k else "MISSED"
+                    gid_ = f"{h['slug']}#{h['ordinal']}"
+                    if gid_ not in readable:
+                        marker = "NOT READABLE by this user (ACL)"
+                    else:
+                        marker = (
+                            "retrieved"
+                            if gid_ in {f"{c.document_slug}#{c.ordinal}" for c in chunks}
+                            else "MISSED"
+                        )
                     print(
                         f"  rank {h['rank']:3d}/{total}  {h['score']:.4f}  "
                         f"{h['slug']}#{h['ordinal']}  [{h['heading_path']}]  {marker}"
@@ -115,6 +134,7 @@ if __name__ == "__main__":
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--tenant", required=True)
+    parser.add_argument("--as-user", required=True, help="seeded user email; retrieval runs with their ACL")
     parser.add_argument("--question", required=True)
     parser.add_argument("--top-k", type=int)
     parser.add_argument("--log-id", type=int, help="query_log id of the original request")

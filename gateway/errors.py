@@ -33,6 +33,10 @@ class MigrationsNotApplied(GatewayError):
     """The database schema is behind the migrations directory."""
 
 
+class AuthenticationFailed(GatewayError):
+    """No valid token, or the token's user or tenant no longer exists. Always HTTP 401."""
+
+
 class TenantNotFound(GatewayError):
     """No tenant with the given slug."""
 

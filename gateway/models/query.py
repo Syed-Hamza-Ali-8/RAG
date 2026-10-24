@@ -1,12 +1,13 @@
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class QueryRequest(BaseModel):
-    # Phase 1 has no auth, so the tenant is named in the request. Phase 3 replaces this
-    # field with the tenant from the JWT AuthContext.
-    tenant: str = Field(min_length=1, max_length=100)
+    # The tenant comes only from the bearer token. Any extra field, a "tenant" included, is
+    # rejected with 422 even when it matches the token's tenant (adversarial a009, a010, a039).
+    model_config = ConfigDict(extra="forbid")
+
     question: str = Field(min_length=1, max_length=2000)
     top_k: int | None = Field(default=None, ge=1, le=20)
 

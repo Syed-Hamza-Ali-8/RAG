@@ -32,13 +32,14 @@ import asyncpg
 import httpx
 
 from gateway.config import Settings, get_settings
+from gateway.deps import auth_for_email
 from gateway.errors import LLMProviderError
 from gateway.llm.prompts import PROMPT_VERSION
 from gateway.llm.provider import Completion, OpenAICompatibleLLM
 from gateway.main import create_app
 from gateway.query_log import QueryLogEntry, write_query_log
-from gateway.rag import resolve_tenant
 from gateway.retrieval.vector import RetrievedChunk, vector_search
+from gateway.security.tokens import issue_token
 from judge import JUDGE_PROMPT_VERSION, JudgeParseError, Source, call_judge, parse_verdict
 from metrics import all_hops_at_k, hop_ranks, ndcg_at_k, recall_at_k, reciprocal_rank
 
@@ -286,10 +287,12 @@ async def evaluate_item(
         k: item.get(k)
         for k in ("id", "type", "tags", "tenant", "as_user", "pair", "question", "expected_answer")
     }
+    # Every item is asked as its seeded user: retrieval metrics use that user's ACL filter (Phase 3+).
     async with pool.acquire() as conn:
-        tenant_id = await resolve_tenant(conn, item["tenant"])
+        auth = await auth_for_email(conn, item["tenant"], item["as_user"])
+        tenant_id = auth.tenant_id
         query_vec = await app_state.embedder.embed_query(item["question"])
-        chunks = await vector_search(conn, tenant_id=tenant_id, query_embedding=query_vec, top_k=RETRIEVE_K)
+        chunks = await vector_search(conn, acl_filter=auth.acl(), query_embedding=query_vec, top_k=RETRIEVE_K)
     ranked = [gid(c) for c in chunks]
     record["retrieved"] = ranked
     if item["type"] != "unanswerable":
@@ -297,9 +300,10 @@ async def evaluate_item(
     if judge_llm is None:  # retrieval-only run
         return record
 
-    # Phase 2 has no auth: the tenant is named in the body (CLAUDE.md shortcut). as_user is recorded
-    # so Phase 3 can switch this call to the seeded user's token.
-    response = await client.post("/v1/query", json={"tenant": item["tenant"], "question": item["question"]})
+    token = issue_token(settings, user_id=auth.user_id, tenant_id=auth.tenant_id)
+    response = await client.post(
+        "/v1/query", json={"question": item["question"]}, headers={"Authorization": f"Bearer {token}"}
+    )
     await asyncio.sleep(delay_s)
     if response.status_code != 200:
         raise HarnessStopped(

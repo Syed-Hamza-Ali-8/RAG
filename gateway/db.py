@@ -15,8 +15,15 @@ MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 _MIGRATION_LOCK_ID = 7_340_001
 
 
+async def _init_connection(conn: asyncpg.Connection) -> None:
+    await register_vector(conn)
+    # With a selective WHERE clause (the ACL predicate), keep scanning the HNSW index until enough
+    # permitted rows are found, in exact distance order, instead of returning fewer than LIMIT.
+    await conn.execute("SET hnsw.iterative_scan = strict_order")
+
+
 async def create_pool(dsn: str, *, min_size: int = 1, max_size: int = 10) -> asyncpg.Pool:
-    pool = await asyncpg.create_pool(dsn, min_size=min_size, max_size=max_size, init=register_vector)
+    pool = await asyncpg.create_pool(dsn, min_size=min_size, max_size=max_size, init=_init_connection)
     assert pool is not None
     return pool
 

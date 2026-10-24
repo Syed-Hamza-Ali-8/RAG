@@ -152,6 +152,12 @@ async def eval_app(
             "INSERT INTO tenants (slug, name) VALUES ('evalco', 'EvalCo') "
             "ON CONFLICT (slug) DO UPDATE SET name = 'EvalCo' RETURNING id"
         )
+        await conn.execute(
+            "INSERT INTO users (tenant_id, email, roles, clearance) VALUES ($1, 'hr@evalco.example', $2, 1) "
+            "ON CONFLICT (tenant_id, email) DO NOTHING",
+            tenant_id,
+            ["employee", "hr"],
+        )
     doc = tmp_path / "leave.md"
     doc.write_text(
         "# Leave Policy\n\n## Annual\n\nStaff receive 21 days of annual leave.\n", encoding="utf-8"
@@ -208,6 +214,7 @@ async def test_evaluate_item_retrieval_only_makes_no_llm_calls(
         "type": "single_hop",
         "tags": [],
         "tenant": "evalco",
+        "as_user": "hr@evalco.example",
         "question": "Annual leave?",
         "expected_answer": "21 days.",
         "evidence": [{"text": "21 days", "chunk_ids": ["hr-leave-policy#0"]}],

@@ -29,7 +29,6 @@ import asyncpg
 from gateway.config import get_settings
 from gateway.db import create_pool
 from gateway.llm.provider import OpenAICompatibleLLM
-from gateway.rag import resolve_tenant
 from judge import JUDGE_PROMPT_VERSION, VERDICT_FIELDS, Source
 from run_eval import RESULTS_DIR, HarnessStopped, judge_and_log, preflight
 
@@ -145,7 +144,7 @@ async def run(check_only: bool, path: Path = CALIBRATION) -> int:
                     Source(f"S{k}", ctx[g][0], ctx[g][1]) for k, g in enumerate(item["context_gids"], 1)
                 ]
                 async with pool.acquire() as conn:
-                    tenant_id = await resolve_tenant(conn, item["tenant"])
+                    tenant_id = await conn.fetchval("SELECT id FROM tenants WHERE slug = $1", item["tenant"])
                 out = await judge_and_log(
                     pool,
                     tenant_id,

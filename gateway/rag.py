@@ -1,4 +1,5 @@
-"""Phase 1 request path: embed → vector search → prompt → LLM → citation check → query_log."""
+"""Request path: embed → ACL-filtered vector search → prompt → LLM → citation check →
+query_log + audit_log. Permissions come from the AuthContext, resolved from the database per request."""
 
 import logging
 import time
@@ -6,13 +7,15 @@ from uuid import UUID
 
 import asyncpg
 
+from gateway.deps import AuthContext
 from gateway.errors import TenantNotFound
 from gateway.ingest.embedder import Embedder
 from gateway.llm.prompts import PROMPT_VERSION, REFUSAL_MESSAGE, build_messages, source_label
 from gateway.llm.provider import LLM
 from gateway.models.query import Citation, QueryResponse, Timings
 from gateway.query_log import QueryLogEntry, write_query_log
-from gateway.retrieval.vector import vector_search
+from gateway.retrieval.vector import denied_count, vector_search
+from gateway.security.audit import AuditEntry, write_audit
 from gateway.security.guardrails import check_citations
 
 log = logging.getLogger(__name__)
@@ -34,15 +37,16 @@ async def answer_query(
     embedder: Embedder,
     llm: LLM,
     *,
-    tenant_slug: str,
+    auth: AuthContext,
     question: str,
     top_k: int,
 ) -> QueryResponse:
     started = time.perf_counter()
+    acl_filter = auth.acl()
     async with pool.acquire() as conn:
-        tenant_id = await resolve_tenant(conn, tenant_slug)
         query_vec = await embedder.embed_query(question)
-        chunks = await vector_search(conn, tenant_id=tenant_id, query_embedding=query_vec, top_k=top_k)
+        chunks = await vector_search(conn, acl_filter=acl_filter, query_embedding=query_vec, top_k=top_k)
+        denied = await denied_count(conn, acl_filter=acl_filter, query_embedding=query_vec, top_k=top_k)
     retrieval_ms = _ms(started)
 
     model: str | None = None
@@ -54,7 +58,9 @@ async def answer_query(
     answer = REFUSAL_MESSAGE
     citations: list[Citation] = []
 
-    if chunks:  # nothing retrieved → refuse without an LLM call
+    # Nothing permitted retrieved → refuse without an LLM call. This branch depends only on what the
+    # caller may read, never on what was denied, so it reveals nothing about restricted documents.
+    if chunks:
         llm_started = time.perf_counter()
         completion = await llm.complete(build_messages(question, chunks))
         llm_ms = _ms(llm_started)
@@ -83,10 +89,10 @@ async def answer_query(
     refused = not citations
     total_ms = _ms(started)
     async with pool.acquire() as conn:
-        await write_query_log(
+        query_log_id = await write_query_log(
             conn,
             QueryLogEntry(
-                tenant_id=tenant_id,
+                tenant_id=auth.tenant_id,
                 route_tier=llm.tier,
                 model_used=model,
                 prompt_tokens=prompt_tokens,
@@ -99,6 +105,21 @@ async def answer_query(
                 citations_valid=citations_valid,
                 citations_rejected=citations_rejected,
                 prompt_version=PROMPT_VERSION if answer_raw is not None else None,
+            ),
+        )
+        await write_audit(
+            conn,
+            AuditEntry(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                user_roles=auth.roles,
+                user_clearance=auth.clearance,
+                query_text=question,
+                retrieved_ids=[c.chunk_id for c in chunks],
+                denied_count=denied,
+                refused=refused,
+                answer=answer,
+                query_log_id=query_log_id,
             ),
         )
     return QueryResponse(

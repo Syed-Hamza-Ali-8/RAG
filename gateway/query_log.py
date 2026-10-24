@@ -27,13 +27,14 @@ class QueryLogEntry:
     purpose: str = "query"  # 'query' | 'eval_judge' (migration 008)
 
 
-async def write_query_log(conn: asyncpg.Connection, e: QueryLogEntry) -> None:
-    await conn.execute(
+async def write_query_log(conn: asyncpg.Connection, e: QueryLogEntry) -> int:
+    log_id: int = await conn.fetchval(
         """
         INSERT INTO query_log (tenant_id, route_tier, model_used, prompt_tokens,
                                completion_tokens, retrieval_ms, llm_ms, total_ms, refused,
                                answer_raw, citations_valid, citations_rejected, prompt_version, purpose)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        RETURNING id
         """,
         e.tenant_id,
         e.route_tier,
@@ -50,3 +51,4 @@ async def write_query_log(conn: asyncpg.Connection, e: QueryLogEntry) -> None:
         e.prompt_version,
         e.purpose,
     )
+    return log_id

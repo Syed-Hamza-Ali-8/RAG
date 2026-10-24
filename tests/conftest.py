@@ -18,6 +18,14 @@ from gateway.llm.provider import Completion
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--acl-disabled",
+        action="store_true",
+        help="DEMONSTRATION ONLY: remove the ACL predicate so tests/test_acl_isolation.py visibly fails",
+    )
+
+
 def _test_db_name() -> str:
     name = os.environ.get("TEST_POSTGRES_DB") or dotenv_values(ROOT / ".env").get("TEST_POSTGRES_DB")
     if not name:

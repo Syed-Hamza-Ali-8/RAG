@@ -8,10 +8,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from gateway.api import query
+from gateway.api import auth, query
 from gateway.config import Settings, get_settings
 from gateway.db import assert_embedding_dim, assert_migrations_applied, create_pool
-from gateway.errors import LLMProviderError, LLMUnavailable, RateLimitExhausted, TenantNotFound
+from gateway.errors import (
+    AuthenticationFailed,
+    LLMProviderError,
+    LLMUnavailable,
+    RateLimitExhausted,
+    TenantNotFound,
+)
 from gateway.ingest.embedder import Embedder
 from gateway.llm.provider import LLM, OpenAICompatibleLLM
 
@@ -46,6 +52,15 @@ def create_app(settings: Settings | None = None, *, llm: LLM | None = None) -> F
 
     app = FastAPI(title="Gateway", version="0.1.0", lifespan=lifespan)
     app.include_router(query.router)
+    app.include_router(auth.router)
+
+    @app.exception_handler(AuthenticationFailed)
+    async def _unauthenticated(_: Request, exc: AuthenticationFailed) -> JSONResponse:
+        # The reason is logged, never returned: callers cannot tell a deleted tenant from a bad token.
+        log.info("authentication failed: %s", exc)
+        return JSONResponse(
+            status_code=401, content={"error": "unauthenticated"}, headers={"WWW-Authenticate": "Bearer"}
+        )
 
     @app.exception_handler(TenantNotFound)
     async def _tenant_not_found(_: Request, exc: TenantNotFound) -> JSONResponse:

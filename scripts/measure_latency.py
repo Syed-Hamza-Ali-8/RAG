@@ -18,34 +18,37 @@ import httpx
 
 from gateway.config import get_settings
 from gateway.db import create_pool
+from gateway.deps import auth_for_email
 from gateway.llm.prompts import PROMPT_VERSION
 from gateway.main import create_app
+from gateway.security.tokens import issue_token
 
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS = ROOT / "EVAL_RESULTS.md"
 SECTION = "## Phase 1 — Baseline latency"
 
-QUESTIONS: list[tuple[str, str]] = [
-    ("acme", "How many days of paid annual leave do full-time employees get?"),
-    ("acme", "Who signed the Halvorsen Logistics master services agreement for Acme?"),
-    ("acme", "What is the recovery time objective for Atlas?"),
-    ("acme", "What caused the Atlas outage in March 2026?"),
-    ("acme", "What is the on-call allowance per week?"),
-    ("acme", "When is the ISO 27001 recertification audit?"),
-    ("acme", "What approval is needed for an expense above USD 5,000?"),
-    ("acme", "What is the minimum salary for a Manager in Karachi?"),
-    ("acme", "How long is paternity leave?"),
-    ("acme", "Which region hosts Brightwater Health patient data?"),
-    ("globex", "How many days of annual leave do Globex employees get?"),
-    ("globex", "What is the Tessera Cloud monthly fee?"),
-    ("globex", "When is the Marlowe Retail audit report due?"),
-    ("globex", "What caused the Ledger Vault outage?"),
-    ("globex", "How long are database backups kept?"),
-    ("globex", "What bonus do staff get for passing an ACCA paper?"),
-    ("globex", "Who chairs the performance moderation committee?"),
-    ("globex", "What is the gifts limit in the code of conduct?"),
-    ("globex", "When does the Pemberton Construction NDA expire?"),
-    ("globex", "What is the per diem in the UAE?"),
+# (tenant, seeded user, question): each question runs as a user whose role can read its answer.
+QUESTIONS: list[tuple[str, str, str]] = [
+    ("acme", "hr@acme.example", "How many days of paid annual leave do full-time employees get?"),
+    ("acme", "legal@acme.example", "Who signed the Halvorsen Logistics master services agreement for Acme?"),
+    ("acme", "engineer@acme.example", "What is the recovery time objective for Atlas?"),
+    ("acme", "engineer@acme.example", "What caused the Atlas outage in March 2026?"),
+    ("acme", "engineer@acme.example", "What is the on-call allowance per week?"),
+    ("acme", "legal@acme.example", "When is the ISO 27001 recertification audit?"),
+    ("acme", "finance@acme.example", "What approval is needed for an expense above USD 5,000?"),
+    ("acme", "hr@acme.example", "What is the minimum salary for a Manager in Karachi?"),
+    ("acme", "hr@acme.example", "How long is paternity leave?"),
+    ("acme", "legal@acme.example", "Which region hosts Brightwater Health patient data?"),
+    ("globex", "hr@globex.example", "How many days of annual leave do Globex employees get?"),
+    ("globex", "legal@globex.example", "What is the Tessera Cloud monthly fee?"),
+    ("globex", "legal@globex.example", "When is the Marlowe Retail audit report due?"),
+    ("globex", "engineer@globex.example", "What caused the Ledger Vault outage?"),
+    ("globex", "engineer@globex.example", "How long are database backups kept?"),
+    ("globex", "hr@globex.example", "What bonus do staff get for passing an ACCA paper?"),
+    ("globex", "hr@globex.example", "Who chairs the performance moderation committee?"),
+    ("globex", "employee@globex.example", "What is the gifts limit in the code of conduct?"),
+    ("globex", "legal@globex.example", "When does the Pemberton Construction NDA expire?"),
+    ("globex", "finance@globex.example", "What is the per diem in the UAE?"),
 ]
 
 
@@ -94,13 +97,26 @@ async def run(delay_ms: int, rounds: int) -> None:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://bench", timeout=180) as client:
             # Warm-up (excluded): first ONNX inference and connection setup.
-            await client.post("/v1/query", json={"tenant": "acme", "question": "warm up"})
+            async with pool.acquire() as conn:
+                tokens = {}
+                for tenant, email, _ in [*QUESTIONS, ("acme", "employee@acme.example", "")]:
+                    auth = await auth_for_email(conn, tenant, email)
+                    tokens[email] = issue_token(settings, user_id=auth.user_id, tenant_id=auth.tenant_id)
+            await client.post(
+                "/v1/query",
+                json={"question": "warm up"},
+                headers={"Authorization": f"Bearer {tokens['employee@acme.example']}"},
+            )
             async with pool.acquire() as conn:
                 start_id = await conn.fetchval("SELECT coalesce(max(id), 0) FROM query_log")
             for _ in range(rounds):
-                for tenant, question in QUESTIONS:
+                for _tenant, email, question in QUESTIONS:
                     before = counter.count
-                    r = await client.post("/v1/query", json={"tenant": tenant, "question": question})
+                    r = await client.post(
+                        "/v1/query",
+                        json={"question": question},
+                        headers={"Authorization": f"Bearer {tokens[email]}"},
+                    )
                     retries_per_request.append(counter.count - before)
                     if r.status_code != 200:
                         # Stop at the first failure: a wedged run measures nothing. The full
@@ -133,7 +149,7 @@ async def run(delay_ms: int, rounds: int) -> None:
     asked = [q for _ in range(rounds) for q in QUESTIONS]
     refused_questions = [
         f"  - [{tenant}] {question} (query_log id {row['id']})"
-        for row, (tenant, question) in zip(rows, asked, strict=True)
+        for row, (tenant, _email, question) in zip(rows, asked, strict=True)
         if row["refused"]
     ]
 
@@ -174,7 +190,8 @@ async def run(delay_ms: int, rounds: int) -> None:
             f"{delay_ms} ms delay between requests (EVAL_REQUEST_DELAY_MS) for free-tier rate limits",
             f"- Tier: `{settings.llm_tier}`; model(s): {', '.join(f'`{m}`' for m in models)}",
             f"- **Prompt version: `{PROMPT_VERSION}`** (read from `query_log.prompt_version` for every row)",
-            f"- Retrieval: vector-only, top_k={settings.retrieval_top_k}",
+            f"- Retrieval: vector-only, top_k={settings.retrieval_top_k}; "
+            "each question asked as a seeded user through the auth path (ACL filtering applies)",
             f"- Refused (zero valid citations): {refused}/{len(rows)} (not a quality metric; see Phase 2)",
             *refused_questions,
             f"- Requests that hit a 429 retry: {retried}/{len(rows)}",

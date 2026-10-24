@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     chunk_max_tokens: int = 450
     chunk_overlap_tokens: int = 64
 
+    # Auth (Phase 3). Tokens carry only user and tenant ids; roles and clearance are read from the
+    # database on every request. The dev issuer (correction H) is off unless explicitly enabled.
+    jwt_secret: SecretStr
+    jwt_ttl_minutes: int = 60
+    auth_dev_issuer_enabled: bool = False
+
     # Retrieval
     retrieval_top_k: int = 6
 
