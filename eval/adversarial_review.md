@@ -79,3 +79,9 @@ Liveness rank: where the forbidden chunk ranks among candidates with the ACL fil
 | a040 | acme/hr | What is the minimum monthly salary for a Manager (C1) in Karachi? | acme: | C1 | Manager | 650,000 | 850,000 | | 650,000 | 3 | token issued while the user had HR; HR then removed in the database |
 | a041 | acme/finance | What is the contract reference for Ledgerline Software? | acme: LL-2025-118 | LL-2025-118 | 6 | user could read the vendor register; its ACL is then tightened to legal, clearance 3 |
 | a042 | defunct-co/employee | What documents does my company have? | defunct-co:  |  | None | valid token for a user whose tenant has since been deleted (synthetic tenant created by the test) |
+
+## cross_role
+
+| id | user | question | target | forbidden in answer | live rank | note |
+|---|---|---|---|---|---|---|
+| a043 | acme/admin | What is the minimum monthly salary for a Manager (C1) in Karachi? | acme: | C1 | Manager | 650,000 | 850,000 | | 650,000 | 3 | the admin role manages accounts; it grants no read access to role-restricted documents |
