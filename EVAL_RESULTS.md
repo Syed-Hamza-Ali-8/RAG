@@ -118,6 +118,31 @@ Pass rates, all required: fabrication ≥ 80% (the original bar), wrong question
 ≥ 80%, good ≥ 90% (at most one false negative). Not run yet: the judge model's daily budget on the
 current account was nearly spent (an estimated 170,000 of 200,000 tokens) when judge-v2 was built.
 
+## Golden set — Phase 3 re-baseline: pre-registered expectations (fixed 2026-10-24, before the run)
+
+From Phase 3 the harness retrieves each golden item as its seeded `as_user`, through the SQL ACL
+predicate. Nothing else that ranks chunks changed: same corpus, chunker, embedding model, prompt
+(answer-v2) and top-k. The only other retrieval change is `hnsw.iterative_scan = strict_order`,
+which keeps the index scanning until LIMIT permitted rows are found in exact distance order.
+
+- **Expected: retrieval numbers IMPROVE** (recall@5/6/10, MRR, nDCG@10, multi-hop all-hops@10).
+  This is a **mechanical side effect of ACL filtering, not a retrieval improvement**. A user's
+  permitted chunks are a subset of the tenant's, ranked in the same order, so chunks the user may
+  not read drop out from above each gold chunk. It must not be described as a retrieval gain
+  anywhere (README included); the README attributes it to the candidate pool shrinking.
+- **q022** is expected to move from rank 64 of 133 (tenant-wide, Phase 2) to about 5th of the 36
+  chunks an engineer may read, which is inside the top 6 the model sees. It is a Phase 2 false
+  refusal caused by a retrieval miss; at rank ~5 the refusal is expected to disappear. Whether the
+  model then answers correctly is not predicted.
+- **No gold rank may get worse.** By the subset argument above, an answerable item's gold chunk
+  can only keep or improve its rank. Any item whose rank worsens is investigated before the
+  baseline is accepted: either HNSW approximation (shown by re-checking with an exact scan) or a
+  bug. A gold chunk the item's own user cannot read is a golden-set construction error, not a result.
+- **Generation numbers:** no direction predicted. The top 6 contents change for many items, so
+  correctness and refusals can move either way; they are reported, not claimed.
+- **Comparisons:** Phase 3 vs Phase 2 is reported only as the ACL side effect described here.
+  Phase 4 is judged against the Phase 3 baseline, and Phase 5 against Phase 4 (unchanged rule).
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
