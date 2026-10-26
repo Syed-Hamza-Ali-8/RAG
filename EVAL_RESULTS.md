@@ -106,7 +106,7 @@ Judge cost: 20 calls used 54,940 tokens (2,747 per call on average), logged in `
 more than the judge model's 200,000-token daily cap, so full runs exceed the daily budget of both
 models.
 
-### judge-v2 — pre-registered, not yet run
+### judge-v2 — pre-registered (`89feeab`), run 2026-10-26
 
 judge-v2 adds a fourth verdict, `citations_supported`: every citation marker must point to a source
 that supports its own sentence. The other three verdicts keep judge-v1's definitions. Its
@@ -117,6 +117,29 @@ citation → **citations_supported = false** (judge-v1's rule was faithful = fal
 Pass rates, all required: fabrication ≥ 80% (the original bar), wrong question ≥ 80%, bad citation
 ≥ 80%, good ≥ 90% (at most one false negative). Not run yet: the judge model's daily budget on the
 current account was nearly spent (an estimated 170,000 of 200,000 tokens) when judge-v2 was built.
+
+**Result** (`eval/calibration/judge-v2.json`; judge `openai/gpt-oss-120b`, prompt `judge-v2`):
+
+| Category (10 each) | Caught when | Pre-registered | Caught | Full expected verdict |
+|---|---|---|---|---|
+| Fabrication | faithful = false | ≥ 80% | 10 / 10 (100%) | 10 / 10 |
+| Wrong question | correct = false | ≥ 80% | 10 / 10 (100%) | 9 / 10 |
+| Bad citation | citations_supported = false | ≥ 80% | **10 / 10 (100%)** | 10 / 10 |
+| Good answer (false-negative check) | all four true | ≥ 90% | 9 / 10 (90%) | 9 / 10 |
+
+**Verdict: FIT.** Every category meets its pre-registered rate. The blind spot judge-v1 had on
+citations is closed (bad citations 0/5 under judge-v1, 10/10 under judge-v2), including all five
+judge-v1 bad-citation items (c11–c15).
+
+- **The one false negative, c20** (a judge-v1 item, passed by judge-v1): the answer gives the
+  GBP 3 million liability cap; the reference adds that the cap does not apply to fraud or dishonesty.
+  judge-v2 marked it not correct: "omits ... a key fact". judge-v2 is stricter than judge-v1 about
+  omitted qualifiers. This is the single miss the good-answer bar allows (at most one).
+- **c10** is again caught as not correct but judged "relevant", as under judge-v1; the catch rule for
+  wrong-question items is correctness only.
+- Cost: 40 calls, 118,963 tokens (2,974 per call on average; judge-v1 averaged 2,747). One transient
+  connection failure stopped the run after 14 items; it resumed from the saved verdicts without
+  re-judging them.
 
 ## Golden set — Phase 3 re-baseline: pre-registered expectations (fixed 2026-10-24, before the run)
 
@@ -140,6 +163,12 @@ which keeps the index scanning until LIMIT permitted rows are found in exact dis
   bug. A gold chunk the item's own user cannot read is a golden-set construction error, not a result.
 - **Generation numbers:** no direction predicted. The top 6 contents change for many items, so
   correctness and refusals can move either way; they are reported, not claimed.
+- **Judge-scored numbers are not comparable with Phase 2** (added 2026-10-26, after judge-v2
+  calibration and before the run). Phase 2 was scored by judge-v1, Phase 3 by judge-v2. judge-v2 is
+  stricter about omitted qualifiers (calibration item c20), so "correct" may fall partly because
+  the judge changed. Phase 3 correctness and faithfulness are reported on their own; a fall from
+  Phase 2's 85.9% is not read as a regression. `citations_supported` has no Phase 2 value; Phase 3
+  sets its first baseline. Retrieval metrics and refusal counts use no judge and stay comparable.
 - **Comparisons:** Phase 3 vs Phase 2 is reported only as the ACL side effect described here.
   Phase 4 is judged against the Phase 3 baseline, and Phase 5 against Phase 4 (unchanged rule).
 

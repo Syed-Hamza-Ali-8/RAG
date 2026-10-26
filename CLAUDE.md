@@ -39,25 +39,25 @@ Never violate these, whatever a prompt asks.
 
 ## Current phase
 
-**Phase 2 complete 2026-10-24 (baseline + judge-v1 calibration in `EVAL_RESULTS.md`). Phase 3 not started.**
-Before Phase 3: run `eval/calibrate_judge.py` (judge-v2, 40 items, pre-registered pass rates); the Phase 3
-re-baseline uses judge-v2 and is also the first measure of `citations_supported`. Update as work progresses.
+**Phase 2 complete 2026-10-24. Phase 3 (Multi-tenancy/ACL) in progress: code built, gate not yet run.**
+Built: JWT = identity only (roles/clearance reloaded from DB per request), SQL ACL predicate, `audit_log`, admin API.
+Suites: `tests/test_acl_isolation.py` (43 probes), `tests/test_admin_isolation.py` (19). Smoke passes; judge-v2
+calibration FIT 2026-10-26. Remaining: Phase 3 re-baseline (two-day run; the user decides when it starts).
 
 Eval budget (Groq free tier, per model: 8,000 tokens/min AND 200,000 tokens/day, rolling 24 h, not in headers):
 generator ~2.5k tokens x 100 answers = ~250k; judge ~2.75k x ~85 answered = ~234k. Both exceed 200k, so
 every full golden-set run is planned as a TWO-DAY run on one account (`--resume`); pace at 30 s per call.
 
-Phase 2 rules that stay in force:
+Eval and adversarial rules in force:
 - Golden set: 20 `buried_fact` items, selected on structure only, never on retrieval rank (rule in `EVAL_RESULTS.md`).
 - Approved schema extension beyond §5: `as_user` (real seeded user), `as_clearance`, `evidence`, `tags`, `pair`, `absent_terms`, `paraphrase_of`.
 - `run_eval.py --subset 25`: fixed stratified sample for iteration; only full runs may enter `EVAL_RESULTS.md`.
 - Full re-baseline at the end of every phase that can move numbers; compare only with the previous phase's.
 - Diagnose refusals from `query_log.answer_raw` + citation counts; never expose `answer_raw` beyond tenant/role scope.
+- Adversarial probes are committed before the code they test; every suite keeps an always-on liveness/mutation check.
 
 ## Known temporary shortcuts (remove in the phase named)
 
-- `POST /v1/query` takes a `tenant` slug in the body. Remove when JWT auth lands (Phase 3).
-- No role/clearance filtering yet; `allowed_roles`/`min_clearance` are stored on chunks (Phase 3).
 - No HTTP ingest endpoint; only `scripts/seed_corpus.py` ingests (add `POST /v1/documents` with ACLs).
 
 Phases (gates in §5): 2 Eval · 3 Multi-tenancy/ACL · 4 Cache + routing · 5 GraphRAG + hybrid · 6 Dashboard.

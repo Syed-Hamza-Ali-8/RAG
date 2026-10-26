@@ -1,0 +1,1030 @@
+{
+ "meta": {
+  "judge_model": "openai/gpt-oss-120b",
+  "judge_prompt_version": "judge-v2",
+  "calibration_set": "judge_calibration_v2.jsonl",
+  "finished_utc": "20261026T102225Z"
+ },
+ "summary": {
+  "fabrication": {
+   "n": 10,
+   "caught": 10,
+   "rate": 1.0,
+   "full_verdict_match": 10,
+   "misses": []
+  },
+  "wrong_question": {
+   "n": 10,
+   "caught": 10,
+   "rate": 1.0,
+   "full_verdict_match": 9,
+   "misses": []
+  },
+  "bad_citation": {
+   "n": 10,
+   "caught": 10,
+   "rate": 1.0,
+   "full_verdict_match": 10,
+   "misses": []
+  },
+  "good": {
+   "n": 10,
+   "caught": 9,
+   "rate": 0.9,
+   "full_verdict_match": 9,
+   "misses": [
+    "c20"
+   ]
+  },
+  "judge_errors": [],
+  "pass_rates": {
+   "fabrication": 0.8,
+   "wrong_question": 0.8,
+   "bad_citation": 0.8,
+   "good": 0.9
+  },
+  "fit": true
+ },
+ "results": [
+  {
+   "id": "c01",
+   "category": "fabrication",
+   "judge_query_log_id": 318,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false,
+    "unsupported_claims": [
+     "Full-time Acme employees receive 24 working days of paid annual leave per calendar year."
+    ],
+    "miscited": [
+     "Full-time Acme employees receive 24 working days of paid annual leave per calendar year. [S1]"
+    ],
+    "reason": "The answer states 24 days, but sources S1 and S6 specify 22 days, so the claim is unsupported and mis\u2011cited.",
+    "raw": "{\n  \"faithful\": false,\n  \"relevant\": true,\n  \"correct\": false,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [\n    \"Full-time Acme employees receive 24 working days of paid annual leave per calendar year.\"\n  ],\n  \"miscited\": [\n    \"Full-time Acme employees receive 24 working days of paid annual leave per calendar year. [S1]\"\n  ],\n  \"reason\": \"The answer states 24 days, but sources S1 and S6 specify 22 days, so the claim is unsupported and mis\u2011cited.\"\n}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c02",
+   "category": "fabrication",
+   "judge_query_log_id": 319,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false,
+    "unsupported_claims": [
+     "committee chaired by Hamid Rauf, Director of People Operations"
+    ],
+    "miscited": [
+     "Acme performance ratings are calibrated by a committee chaired by Hamid Rauf, Director of People Operations. [S1]"
+    ],
+    "reason": "The answer cites S1 but S1 states the chair is Priya Raman, not Hamid Rauf, making the claim unsupported and the citation incorrect.",
+    "raw": "{\n  \"faithful\": false,\n  \"relevant\": true,\n  \"correct\": false,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [\"committee chaired by Hamid Rauf, Director of People Operations\"],\n  \"miscited\": [\"Acme performance ratings are calibrated by a committee chaired by Hamid Rauf, Director of People Operations. [S1]\"],\n  \"reason\": \"The answer cites S1 but S1 states the chair is Priya Raman, not Hamid Rauf, making the claim unsupported and the citation incorrect.\"\n}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c03",
+   "category": "fabrication",
+   "judge_query_log_id": 320,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false,
+    "unsupported_claims": [
+     "Ledger Vault database backups are kept for 45 days"
+    ],
+    "miscited": [
+     "Ledger Vault database backups are kept for 45 days. [S1]"
+    ],
+    "reason": "The answer states 45 days, but source S1 says 35 days, making the claim unsupported and miscited.",
+    "raw": "{\"faithful\": false, \"relevant\": true, \"correct\": false, \"citations_supported\": false, \"unsupported_claims\": [\"Ledger Vault database backups are kept for 45 days\"], \"miscited\": [\"Ledger Vault database backups are kept for 45 days. [S1]\"], \"reason\": \"The answer states 45 days, but source S1 says 35 days, making the claim unsupported and miscited.\"}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c04",
+   "category": "fabrication",
+   "judge_query_log_id": 321,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false,
+    "unsupported_claims": [
+     "Tessera Cloud commits to 99.97% monthly availability"
+    ],
+    "miscited": [
+     "Tessera Cloud commits to 99.97% monthly availability in the Bahrain Region."
+    ],
+    "reason": "The answer states 99.97% availability, but the source S3 specifies 99.95%, so the claim is unsupported and the citation is incorrect.",
+    "raw": "{\n  \"faithful\": false,\n  \"relevant\": true,\n  \"correct\": false,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [\"Tessera Cloud commits to 99.97% monthly availability\"],\n  \"miscited\": [\"Tessera Cloud commits to 99.97% monthly availability in the Bahrain Region.\"],\n  \"reason\": \"The answer states 99.97% availability, but the source S3 specifies 99.95%, so the claim is unsupported and the citation is incorrect.\"\n}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c05",
+   "category": "fabrication",
+   "judge_query_log_id": 322,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false,
+    "unsupported_claims": [
+     "Acme payslips are published in PeopleDesk on the 28th of each month"
+    ],
+    "miscited": [
+     "Acme payslips are published in PeopleDesk on the 28th of each month."
+    ],
+    "reason": "The answer states the 28th, but the source S1 says payslips are published on the 25th, so the claim is unsupported and the citation does not back it.",
+    "raw": "{\n  \"faithful\": false,\n  \"relevant\": true,\n  \"correct\": false,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [\n    \"Acme payslips are published in PeopleDesk on the 28th of each month\"\n  ],\n  \"miscited\": [\n    \"Acme payslips are published in PeopleDesk on the 28th of each month.\"\n  ],\n  \"reason\": \"The answer states the 28th, but the source S1 says payslips are published on the 25th, so the claim is unsupported and the citation does not back it.\"\n}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c06",
+   "category": "wrong_question",
+   "judge_query_log_id": 323,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "The answer provides the audit fee rather than the audit dates, so it does not address the question and is incorrect, though the cited claim is supported by the source.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": false,\n  \"correct\": false,\n  \"citations_supported\": true,\n  \"unsupported_claims\": [],\n  \"miscited\": [],\n  \"reason\": \"The answer provides the audit fee rather than the audit dates, so it does not address the question and is incorrect, though the cited claim is supported by the source.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c07",
+   "category": "wrong_question",
+   "judge_query_log_id": 324,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer provides sick leave information instead of annual leave, making it irrelevant and incorrect, though the cited source does support the sick\u2011leave claim.",
+    "raw": "{\"faithful\": true, \"relevant\": false, \"correct\": false, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer provides sick leave information instead of annual leave, making it irrelevant and incorrect, though the cited source does support the sick\u2011leave claim.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c08",
+   "category": "wrong_question",
+   "judge_query_log_id": 325,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer does not address the asked question about the committee chair.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": false,\n  \"correct\": false,\n  \"citations_supported\": true,\n  \"unsupported_claims\": [],\n  \"miscited\": [],\n  \"reason\": \"Answer does not address the asked question about the committee chair.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c09",
+   "category": "wrong_question",
+   "judge_query_log_id": 326,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer discusses paternity leave, not the asked maternity leave, making it irrelevant and incorrect, though the cited source does support the paternity claim.",
+    "raw": "{\"faithful\": true, \"relevant\": false, \"correct\": false, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer discusses paternity leave, not the asked maternity leave, making it irrelevant and incorrect, though the cited source does support the paternity claim.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c10",
+   "category": "wrong_question",
+   "judge_query_log_id": 327,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "The answer gives 20\u202fApril\u202f2027, which is supported by source S2, but it does not match the reference answer of 30\u202fApril\u202f2027.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": true,\n  \"correct\": false,\n  \"citations_supported\": true,\n  \"unsupported_claims\": [],\n  \"miscited\": [],\n  \"reason\": \"The answer gives 20\u202fApril\u202f2027, which is supported by source S2, but it does not match the reference answer of 30\u202fApril\u202f2027.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": false
+  },
+  {
+   "id": "c11",
+   "category": "bad_citation",
+   "judge_query_log_id": 328,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false,
+    "unsupported_claims": [],
+    "miscited": [
+     "Sara Qureshi, CEO, signed the Halvorsen Logistics MSA on behalf of Acme on 1 February 2024."
+    ],
+    "reason": "The citation [S6] does not contain the signing information; the relevant detail is in S1.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"citations_supported\": false, \"unsupported_claims\": [], \"miscited\": [\"Sara Qureshi, CEO, signed the Halvorsen Logistics MSA on behalf of Acme on 1 February 2024.\"], \"reason\": \"The citation [S6] does not contain the signing information; the relevant detail is in S1.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c12",
+   "category": "bad_citation",
+   "judge_query_log_id": 329,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false,
+    "unsupported_claims": [],
+    "miscited": [
+     "Acme's Head of People is Priya Raman."
+    ],
+    "reason": "Citation [S6] does not support the claim",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"citations_supported\": false, \"unsupported_claims\": [], \"miscited\": [\"Acme's Head of People is Priya Raman.\"], \"reason\": \"Citation [S6] does not support the claim\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c13",
+   "category": "bad_citation",
+   "judge_query_log_id": 330,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false,
+    "unsupported_claims": [],
+    "miscited": [
+     "The NDA with Pemberton Construction expires on 19 January 2029. [S6]"
+    ],
+    "reason": "The answer's factual claim is correct and supported by source S1, but the citation points to S6, which does not contain that information.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": true,\n  \"correct\": true,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [],\n  \"miscited\": [\"The NDA with Pemberton Construction expires on 19 January 2029. [S6]\"],\n  \"reason\": \"The answer's factual claim is correct and supported by source S1, but the citation points to S6, which does not contain that information.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c14",
+   "category": "bad_citation",
+   "judge_query_log_id": 331,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false,
+    "unsupported_claims": [],
+    "miscited": [
+     "Globex employees may work remotely up to two days per week. [S5]"
+    ],
+    "reason": "The claim is true per source S6, but the citation points to S5 which does not support it.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": true,\n  \"correct\": true,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [],\n  \"miscited\": [\"Globex employees may work remotely up to two days per week. [S5]\"],\n  \"reason\": \"The claim is true per source S6, but the citation points to S5 which does not support it.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c15",
+   "category": "bad_citation",
+   "judge_query_log_id": 332,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false,
+    "unsupported_claims": [],
+    "miscited": [
+     "Globex's daily per diem for business travel in the UAE is USD 110."
+    ],
+    "reason": "The answer cites S6, which does not contain per diem information.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": true,\n  \"correct\": true,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [],\n  \"miscited\": [\"Globex's daily per diem for business travel in the UAE is USD 110.\"],\n  \"reason\": \"The answer cites S6, which does not contain per diem information.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c16",
+   "category": "good",
+   "judge_query_log_id": 333,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer correctly states the RTO as 30 minutes, which is supported by source S2.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer correctly states the RTO as 30 minutes, which is supported by source S2.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c17",
+   "category": "good",
+   "judge_query_log_id": 334,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer matches reference, addresses question, and the cited source S2 directly supports the claim.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer matches reference, addresses question, and the cited source S2 directly supports the claim.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c18",
+   "category": "good",
+   "judge_query_log_id": 335,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer matches reference and is fully supported by source S2",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer matches reference and is fully supported by source S2\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c19",
+   "category": "good",
+   "judge_query_log_id": 336,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "The answer correctly states the minimum salary and cites S3, which directly provides that figure.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": true,\n  \"correct\": true,\n  \"citations_supported\": true,\n  \"unsupported_claims\": [],\n  \"miscited\": [],\n  \"reason\": \"The answer correctly states the minimum salary and cites S3, which directly provides that figure.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c20",
+   "category": "good",
+   "judge_query_log_id": 337,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer omits the reference's detail that the liability cap does not apply to fraud or dishonesty, a key fact.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": true,\n  \"correct\": false,\n  \"citations_supported\": true,\n  \"unsupported_claims\": [],\n  \"miscited\": [],\n  \"reason\": \"Answer omits the reference's detail that the liability cap does not apply to fraud or dishonesty, a key fact.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": true
+   },
+   "caught": false,
+   "full_match": false
+  },
+  {
+   "id": "c21",
+   "category": "fabrication",
+   "judge_query_log_id": 338,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false,
+    "unsupported_claims": [
+     "The Acme platform on-call rotation changes every Tuesday at 10:00 PKT."
+    ],
+    "miscited": [
+     "The Acme platform on-call rotation changes every Tuesday at 10:00 PKT. [S1]"
+    ],
+    "reason": "The answer states Tuesday, but source S1 says Monday, so the claim is unsupported and the citation is incorrect.",
+    "raw": "{\n  \"faithful\": false,\n  \"relevant\": true,\n  \"correct\": false,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [\n    \"The Acme platform on-call rotation changes every Tuesday at 10:00 PKT.\"\n  ],\n  \"miscited\": [\n    \"The Acme platform on-call rotation changes every Tuesday at 10:00 PKT. [S1]\"\n  ],\n  \"reason\": \"The answer states Tuesday, but source S1 says Monday, so the claim is unsupported and the citation is incorrect.\"\n}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c22",
+   "category": "fabrication",
+   "judge_query_log_id": 339,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false,
+    "unsupported_claims": [
+     "Late payments under the Halvorsen MSA carry interest at 3% per year above the European Central Bank main refinancing rate."
+    ],
+    "miscited": [
+     "Late payments under the Halvorsen MSA carry interest at 3% per year above the European Central Bank main refinancing rate. [S6]"
+    ],
+    "reason": "The answer states a 3% rate, but all sources (S1, S6) specify a 2% rate, so the claim is unsupported and the citation does not back it.",
+    "raw": "{\n  \"faithful\": false,\n  \"relevant\": true,\n  \"correct\": false,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [\"Late payments under the Halvorsen MSA carry interest at 3% per year above the European Central Bank main refinancing rate.\"],\n  \"miscited\": [\"Late payments under the Halvorsen MSA carry interest at 3% per year above the European Central Bank main refinancing rate. [S6]\"],\n  \"reason\": \"The answer states a 3% rate, but all sources (S1, S6) specify a 2% rate, so the claim is unsupported and the citation does not back it.\"\n}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c23",
+   "category": "fabrication",
+   "judge_query_log_id": 340,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false,
+    "unsupported_claims": [
+     "Globex pays a bonus of PKR 75,000 for each ACCA or ICAP paper passed at the first attempt."
+    ],
+    "miscited": [
+     "Globex pays a bonus of PKR 75,000 for each ACCA or ICAP paper passed at the first attempt. [S1]"
+    ],
+    "reason": "The answer states a PKR 75,000 bonus, but sources S1 and S6 specify the bonus is PKR 50,000, making the claim unsupported and the citation incorrect.",
+    "raw": "{\n  \"faithful\": false,\n  \"relevant\": true,\n  \"correct\": false,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [\n    \"Globex pays a bonus of PKR 75,000 for each ACCA or ICAP paper passed at the first attempt.\"\n  ],\n  \"miscited\": [\n    \"Globex pays a bonus of PKR 75,000 for each ACCA or ICAP paper passed at the first attempt. [S1]\"\n  ],\n  \"reason\": \"The answer states a PKR 75,000 bonus, but sources S1 and S6 specify the bonus is PKR 50,000, making the claim unsupported and the citation incorrect.\"\n}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c24",
+   "category": "fabrication",
+   "judge_query_log_id": 341,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false,
+    "unsupported_claims": [
+     "Globex must delete Sunridge payroll extracts within 75 days after the related withholding statement is filed."
+    ],
+    "miscited": [
+     "Globex must delete Sunridge payroll extracts within 75 days after the related withholding statement is filed. [S1]"
+    ],
+    "reason": "The answer claims 75 days, but source S1 states the deletion must occur within 90 days.",
+    "raw": "{\"faithful\": false, \"relevant\": true, \"correct\": false, \"citations_supported\": false, \"unsupported_claims\": [\"Globex must delete Sunridge payroll extracts within 75 days after the related withholding statement is filed.\"], \"miscited\": [\"Globex must delete Sunridge payroll extracts within 75 days after the related withholding statement is filed. [S1]\"], \"reason\": \"The answer claims 75 days, but source S1 states the deletion must occur within 90 days.\"}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c25",
+   "category": "fabrication",
+   "judge_query_log_id": 342,
+   "judge": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false,
+    "unsupported_claims": [
+     "Clients cache the Atlas database endpoint for 90 seconds."
+    ],
+    "miscited": [
+     "Clients cache the Atlas database endpoint for 90 seconds. [S1]"
+    ],
+    "reason": "The answer claims a 90\u2011second cache duration, but source S1 states the cache duration is 30 seconds.",
+    "raw": "{\n  \"faithful\": false,\n  \"relevant\": true,\n  \"correct\": false,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [\"Clients cache the Atlas database endpoint for 90 seconds.\"],\n  \"miscited\": [\"Clients cache the Atlas database endpoint for 90 seconds. [S1]\"],\n  \"reason\": \"The answer claims a 90\u2011second cache duration, but source S1 states the cache duration is 30 seconds.\"\n}"
+   },
+   "verdict": {
+    "faithful": false,
+    "relevant": true,
+    "correct": false,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c26",
+   "category": "wrong_question",
+   "judge_query_log_id": 343,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer provides the term end date, not the notice\u2011of\u2011non\u2011renewal deadline requested",
+    "raw": "{\"faithful\": true, \"relevant\": false, \"correct\": false, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer provides the term end date, not the notice\u2011of\u2011non\u2011renewal deadline requested\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c27",
+   "category": "wrong_question",
+   "judge_query_log_id": 344,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer does not address the gift value question.",
+    "raw": "{\"faithful\": true, \"relevant\": false, \"correct\": false, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer does not address the gift value question.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c28",
+   "category": "wrong_question",
+   "judge_query_log_id": 345,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer does not address when busy season occurs, providing unrelated information.",
+    "raw": "{\"faithful\": true, \"relevant\": false, \"correct\": false, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer does not address when busy season occurs, providing unrelated information.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c29",
+   "category": "wrong_question",
+   "judge_query_log_id": 346,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "The answer gives a supported fact about maternity leave, but does not address the paternity leave question and contradicts the reference answer.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": false,\n  \"correct\": false,\n  \"citations_supported\": true,\n  \"unsupported_claims\": [],\n  \"miscited\": [],\n  \"reason\": \"The answer gives a supported fact about maternity leave, but does not address the paternity leave question and contradicts the reference answer.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c30",
+   "category": "wrong_question",
+   "judge_query_log_id": 347,
+   "judge": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer provides UAE per diem (USD 110) which is supported by S1, but the question asked for UK per diem, so the answer is not relevant or correct.",
+    "raw": "{\"faithful\": true, \"relevant\": false, \"correct\": false, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer provides UAE per diem (USD 110) which is supported by S1, but the question asked for UK per diem, so the answer is not relevant or correct.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": false,
+    "correct": false,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c31",
+   "category": "bad_citation",
+   "judge_query_log_id": 348,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false,
+    "unsupported_claims": [],
+    "miscited": [
+     "All Brightwater Health Trust workloads run in Cobalt Cloud's London region only. [S5]"
+    ],
+    "reason": "The claim is correct and supported by sources, but the citation points to S5 which does not contain the region information.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": true,\n  \"correct\": true,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [],\n  \"miscited\": [\"All Brightwater Health Trust workloads run in Cobalt Cloud's London region only. [S5]\"],\n  \"reason\": \"The claim is correct and supported by sources, but the citation points to S5 which does not contain the region information.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c32",
+   "category": "bad_citation",
+   "judge_query_log_id": 349,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false,
+    "unsupported_claims": [],
+    "miscited": [
+     "Acme must claim a Cobalt Cloud Service Credit within 30 days of the end of the incident."
+    ],
+    "reason": "The citation [S6] does not contain the claim\u2011window information, so the sentence is miscited.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"citations_supported\": false, \"unsupported_claims\": [], \"miscited\": [\"Acme must claim a Cobalt Cloud Service Credit within 30 days of the end of the incident.\"], \"reason\": \"The citation [S6] does not contain the claim\u2011window information, so the sentence is miscited.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c33",
+   "category": "bad_citation",
+   "judge_query_log_id": 350,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false,
+    "unsupported_claims": [],
+    "miscited": [
+     "Globex's ISO 27001 surveillance audit runs from 8 to 10 March 2027. [S6]"
+    ],
+    "reason": "The citation points to S6, which does not contain the audit date information.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": true,\n  \"correct\": true,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [],\n  \"miscited\": [\"Globex's ISO 27001 surveillance audit runs from 8 to 10 March 2027. [S6]\"],\n  \"reason\": \"The citation points to S6, which does not contain the audit date information.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c34",
+   "category": "bad_citation",
+   "judge_query_log_id": 351,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false,
+    "unsupported_claims": [],
+    "miscited": [
+     "Tessera scales storage automatically when usage exceeds 80% of allocated capacity, in increments of 25%."
+    ],
+    "reason": "The sentence is cited to S6, which does not contain the storage\u2011scaling details; the correct source is S3.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": true,\n  \"correct\": true,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [],\n  \"miscited\": [\n    \"Tessera scales storage automatically when usage exceeds 80% of allocated capacity, in increments of 25%.\"\n  ],\n  \"reason\": \"The sentence is cited to S6, which does not contain the storage\u2011scaling details; the correct source is S3.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c35",
+   "category": "bad_citation",
+   "judge_query_log_id": 352,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false,
+    "unsupported_claims": [],
+    "miscited": [
+     "A Globex expense claim above USD 3,000 is approved by the CFO, Laura Bennett."
+    ],
+    "reason": "The claim is correct and supported by S1, but the citation points to S6, which does not contain that information.",
+    "raw": "{\n  \"faithful\": true,\n  \"relevant\": true,\n  \"correct\": true,\n  \"citations_supported\": false,\n  \"unsupported_claims\": [],\n  \"miscited\": [\"A Globex expense claim above USD 3,000 is approved by the CFO, Laura Bennett.\"],\n  \"reason\": \"The claim is correct and supported by S1, but the citation points to S6, which does not contain that information.\"\n}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": false
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c36",
+   "category": "good",
+   "judge_query_log_id": 353,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer correctly states the limit and cites S1 which supports it",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer correctly states the limit and cites S1 which supports it\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c37",
+   "category": "good",
+   "judge_query_log_id": 354,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer matches sources and reference",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer matches sources and reference\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c38",
+   "category": "good",
+   "judge_query_log_id": 355,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer correctly states Laura Bennett, CFO, signed on 1 April 2024 and cites S1 which contains that information.",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer correctly states Laura Bennett, CFO, signed on 1 April 2024 and cites S1 which contains that information.\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c39",
+   "category": "good",
+   "judge_query_log_id": 356,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer correctly states director or partner approval for $2,000 claim and citation matches source",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer correctly states director or partner approval for $2,000 claim and citation matches source\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  },
+  {
+   "id": "c40",
+   "category": "good",
+   "judge_query_log_id": 357,
+   "judge": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true,
+    "unsupported_claims": [],
+    "miscited": [],
+    "reason": "Answer correctly states backup retention and cites source S1 which supports the claim",
+    "raw": "{\"faithful\": true, \"relevant\": true, \"correct\": true, \"citations_supported\": true, \"unsupported_claims\": [], \"miscited\": [], \"reason\": \"Answer correctly states backup retention and cites source S1 which supports the claim\"}"
+   },
+   "verdict": {
+    "faithful": true,
+    "relevant": true,
+    "correct": true,
+    "citations_supported": true
+   },
+   "caught": true,
+   "full_match": true
+  }
+ ]
+}
