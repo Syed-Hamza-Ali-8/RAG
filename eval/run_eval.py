@@ -54,6 +54,8 @@ EVAL_RESULTS_MD = ROOT / "EVAL_RESULTS.md"
 RETRIEVE_K = 10
 # Pre-flight fallback when query_log has no recent calls to average over (tokens per call).
 DEFAULT_TOKENS_PER_CALL = {"query": 2600, "eval_judge": 4000}
+# Per-call estimates are averages; budget planning inflates them so one long item cannot cross the cap.
+BUDGET_MARGIN = 1.25
 SUBSET_SEED = "gateway-subset-v1"
 # Fixed allocation for --subset 25, proportional to the full set (strata sizes 20/30/25/15/10).
 # Near-miss items are drawn as whole pairs. Changing this changes the subset: bump SUBSET_SEED.
@@ -62,10 +64,10 @@ SUBSET_ALLOCATION = {
 }
 
 
-def require_stack(*, strict: bool = False, force: bool = False) -> None:
+def require_stack(*, strict: bool = False, force_containers: bool = False) -> None:
     """Container pre-flight (gateway.stack): refuse to start on a stack that is down. With strict, also
     refuse while other projects' containers are running (they share the machine's ~3.8 GB of RAM),
-    unless forced: a warning alone was ignored twice."""
+    unless --force-containers: a warning alone was ignored twice."""
     try:
         status = check_stack()
     except StackNotReady as exc:
@@ -79,9 +81,9 @@ def require_stack(*, strict: bool = False, force: bool = False) -> None:
         f"Stop them first (stop only, never remove; restart list in docs/stopped_containers.txt):\n"
         f"  docker stop {names}"
     )
-    if not force:
-        raise SystemExit(message + "\nor pass --force to run alongside them.")
-    print(message + "\nproceeding anyway: --force given.")
+    if not force_containers:
+        raise SystemExit(message + "\nor pass --force-containers to run alongside them.")
+    print(message + "\nproceeding anyway: --force-containers given (the token-budget check still applies).")
 
 
 class HarnessStopped(Exception):
@@ -381,6 +383,54 @@ def budget_check(used: int, per_call: float, calls: int, limit: int) -> tuple[in
     return needed, remaining, needed <= remaining
 
 
+async def tokens_used_24h(conn: asyncpg.Connection, model: str) -> int:
+    used = await conn.fetchval(
+        "SELECT coalesce(sum(prompt_tokens + completion_tokens), 0) FROM query_log "
+        "WHERE model_used = $1 AND ts > now() - interval '24 hours'",
+        model,
+    )
+    return int(used)
+
+
+async def tokens_per_call(conn: asyncpg.Connection, model: str, purpose: str) -> float:
+    avg = await conn.fetchval(
+        "SELECT avg(prompt_tokens + completion_tokens) FROM query_log "
+        "WHERE model_used = $1 AND purpose = $2 AND ts > now() - interval '7 days'",
+        model,
+        purpose,
+    )
+    return float(avg) if avg is not None else float(DEFAULT_TOKENS_PER_CALL[purpose])
+
+
+def item_cost(
+    item: dict[str, Any], gen_model: str, judge_model: str, cost: dict[str, float]
+) -> dict[str, float]:
+    """Estimated tokens one item spends per model, margin included: one generation, plus one judge call
+    when the item is answerable."""
+    need = {gen_model: cost["query"] * BUDGET_MARGIN}
+    if item["type"] != "unanswerable":
+        need[judge_model] = need.get(judge_model, 0.0) + cost["eval_judge"] * BUDGET_MARGIN
+    return need
+
+
+def affordable_items(
+    todo: list[dict[str, Any]],
+    remaining: dict[str, int],
+    gen_model: str,
+    judge_model: str,
+    cost: dict[str, float],
+) -> int:
+    """How many items, in run order, fit in every model's remaining budget."""
+    left = dict(remaining)
+    for n, item in enumerate(todo):
+        need = item_cost(item, gen_model, judge_model, cost)
+        if any(left.get(m, 0) < v for m, v in need.items()):
+            return n
+        for m, v in need.items():
+            left[m] -= round(v)
+    return len(todo)
+
+
 async def preflight(
     conn: asyncpg.Connection, limit: int, plan: dict[str, list[tuple[str, int]]]
 ) -> list[str]:
@@ -390,20 +440,10 @@ async def preflight(
     problems = []
     print(f"pre-flight: provider daily cap {limit:,} tokens per model (rolling 24 h, from query_log)")
     for model, uses in plan.items():
-        used = await conn.fetchval(
-            "SELECT coalesce(sum(prompt_tokens + completion_tokens), 0) FROM query_log "
-            "WHERE model_used = $1 AND ts > now() - interval '24 hours'",
-            model,
-        )
+        used = await tokens_used_24h(conn, model)
         needed_total = 0
         for purpose, calls in uses:
-            avg = await conn.fetchval(
-                "SELECT avg(prompt_tokens + completion_tokens) FROM query_log "
-                "WHERE model_used = $1 AND purpose = $2 AND ts > now() - interval '7 days'",
-                model,
-                purpose,
-            )
-            per_call = float(avg) if avg is not None else DEFAULT_TOKENS_PER_CALL[purpose]
+            per_call = await tokens_per_call(conn, model, purpose)
             needed_total += round(per_call * calls)
             print(f"  {model}: {calls} {purpose} calls x ~{per_call:,.0f} tokens")
         _, remaining, fits = budget_check(int(used), needed_total, 1, limit)
@@ -556,7 +596,7 @@ async def run(
     args: argparse.Namespace,
     golden: list[dict[str, Any]],
     resumed: Partial | None,
-    force: bool = False,
+    force_budget: bool = False,
 ) -> int:
     settings = get_settings()
     resume_records: list[dict[str, Any]] = []
@@ -615,10 +655,27 @@ async def run(
                     ("eval_judge", sum(i["type"] != "unanswerable" for i in todo))
                 )
                 over = await preflight(conn, settings.llm_daily_token_limit, plan)
-                if over and not force:
-                    raise SystemExit(
-                        f"pre-flight: this run would exceed the daily token budget of {over}; it would stop "
-                        "partway. Run --subset 25, wait for the rolling window, or pass --force."
+                judge_model = judge_llm.model_id
+                cost = {
+                    "query": await tokens_per_call(conn, gen_model, "query"),
+                    "eval_judge": await tokens_per_call(conn, judge_model, "eval_judge"),
+                }
+                if over and force_budget:
+                    print("pre-flight: --force-budget given; the run continues until the provider stops it")
+                elif over:
+                    remaining = {
+                        m: settings.llm_daily_token_limit - await tokens_used_24h(conn, m)
+                        for m in {gen_model, judge_model}
+                    }
+                    fit = affordable_items(todo, remaining, gen_model, judge_model, cost)
+                    if fit == 0:
+                        raise SystemExit(
+                            "pre-flight: no item fits in today's remaining budget; wait for the window"
+                        )
+                    print(
+                        f"pre-flight: day plan: {fit} of {len(todo)} items fit today's remaining budget "
+                        f"(estimates x{BUDGET_MARGIN}); the run stops cleanly before the next item would "
+                        "cross a cap, and --resume continues it"
                     )
         fresh_meta = {
             "run_id": run_id,
@@ -657,6 +714,17 @@ async def run(
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://eval", timeout=180) as client:
             for n, item in enumerate(todo, 1):
+                if judge_llm is not None and not force_budget:
+                    async with pool.acquire() as conn:
+                        need = item_cost(item, gen_model, judge_model, cost)
+                        short = [
+                            m
+                            for m, v in need.items()
+                            if await tokens_used_24h(conn, m) + v > settings.llm_daily_token_limit
+                        ]
+                    if short:
+                        stopped = f"budget: {item['id']} would cross today's cap for {short}"
+                        break
                 try:
                     record = await evaluate_item(item, client, pool, app.state, judge_llm, settings, delay_s)
                 except HarnessStopped as exc:
@@ -727,14 +795,19 @@ def main() -> None:
     parser.add_argument("--delay-ms", type=int, help="override EVAL_REQUEST_DELAY_MS")
     parser.add_argument("--resume", metavar="PARTIAL", help="continue a stopped run from its .partial.jsonl")
     parser.add_argument(
-        "--force",
+        "--force-containers",
         action="store_true",
-        help="start even if a pre-flight check fails (token budget, other projects' containers running)",
+        help="run even while other projects' containers are up (the budget check still applies)",
+    )
+    parser.add_argument(
+        "--force-budget",
+        action="store_true",
+        help="ignore the daily token budget: no day plan, no per-item stop (container check still applies)",
     )
     args = parser.parse_args()
-    require_stack(strict=True, force=args.force)
+    require_stack(strict=True, force_containers=args.force_containers)
     resumed = read_partial(Path(args.resume)) if args.resume else None
-    sys.exit(asyncio.run(run(args, load_golden(), resumed, force=args.force)))
+    sys.exit(asyncio.run(run(args, load_golden(), resumed, force_budget=args.force_budget)))
 
 
 if __name__ == "__main__":

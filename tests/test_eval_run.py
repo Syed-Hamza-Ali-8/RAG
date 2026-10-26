@@ -280,8 +280,8 @@ def test_strict_preflight_refuses_other_containers_without_force(
     _stack(monkeypatch, ["case_app_dev", "odoo_db"])
     with pytest.raises(SystemExit, match="docker stop case_app_dev odoo_db") as exc:
         require_stack(strict=True)
-    assert "--force" in str(exc.value)
-    require_stack(strict=True, force=True)
+    assert "--force-containers" in str(exc.value)
+    require_stack(strict=True, force_containers=True)
     assert "proceeding anyway" in capsys.readouterr().out
     require_stack()  # non-strict callers (calibrate_judge) only warn
 
@@ -291,3 +291,29 @@ def test_strict_preflight_passes_on_a_clean_machine(monkeypatch: pytest.MonkeyPa
 
     _stack(monkeypatch, [])
     require_stack(strict=True)
+
+
+def test_day_plan_stops_at_the_first_item_either_model_cannot_afford() -> None:
+    from run_eval import BUDGET_MARGIN, affordable_items
+
+    items = [{"type": "single_hop"}, {"type": "unanswerable"}, {"type": "single_hop"}, {"type": "single_hop"}]
+    cost = {"query": 1000.0, "eval_judge": 2000.0}
+    gen, judge = round(1000 * BUDGET_MARGIN), round(2000 * BUDGET_MARGIN)
+    plenty = 10**6
+    assert affordable_items(items, {"g": plenty, "j": plenty}, "g", "j", cost) == 4
+    # Judge budget for two answerable items: the unanswerable one in between needs no judge call.
+    assert affordable_items(items, {"g": plenty, "j": 2 * judge}, "g", "j", cost) == 3
+    # Generator budget for exactly two items stops at the third, whatever the judge has left.
+    assert affordable_items(items, {"g": 2 * gen, "j": plenty}, "g", "j", cost) == 2
+    assert affordable_items(items, {"g": 0, "j": plenty}, "g", "j", cost) == 0
+
+
+def test_item_cost_judges_only_answerable_items() -> None:
+    from run_eval import BUDGET_MARGIN, item_cost
+
+    cost = {"query": 1000.0, "eval_judge": 2000.0}
+    assert item_cost({"type": "unanswerable"}, "g", "j", cost) == {"g": 1000 * BUDGET_MARGIN}
+    assert item_cost({"type": "multi_hop"}, "g", "j", cost) == {
+        "g": 1000 * BUDGET_MARGIN,
+        "j": 2000 * BUDGET_MARGIN,
+    }
