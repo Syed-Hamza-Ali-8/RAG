@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 
@@ -92,3 +93,40 @@ def test_committed_v2_set_has_ten_per_category_and_keeps_v1_items() -> None:
     assert all(
         i["caught_if"] == {"citations_supported": False} for i in items if i["category"] == "bad_citation"
     )
+
+
+def test_resume_reuses_only_verdicts_from_the_same_judge_and_prompt(tmp_path: Path) -> None:
+    from calibrate_judge import read_done
+    from judge import JUDGE_PROMPT_VERSION
+
+    f = tmp_path / "x.partial.jsonl"
+    rows = [
+        {
+            "id": "c01",
+            "verdict": {"faithful": True},
+            "_judge_model": "m",
+            "_judge_prompt_version": JUDGE_PROMPT_VERSION,
+        },
+        {
+            "id": "c02",
+            "verdict": {"faithful": True},
+            "_judge_model": "other",
+            "_judge_prompt_version": JUDGE_PROMPT_VERSION,
+        },
+        {
+            "id": "c03",
+            "verdict": {"faithful": True},
+            "_judge_model": "m",
+            "_judge_prompt_version": "judge-v0",
+        },
+        {
+            "id": "c04",
+            "judge_error": "boom",
+            "_judge_model": "m",
+            "_judge_prompt_version": JUDGE_PROMPT_VERSION,
+        },
+    ]
+    f.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    done = read_done(f, "m")
+    assert list(done) == ["c01"] and done["c01"] == {"id": "c01", "verdict": {"faithful": True}}
+    assert read_done(tmp_path / "missing.jsonl", "m") == {}

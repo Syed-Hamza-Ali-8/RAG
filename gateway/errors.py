@@ -37,6 +37,18 @@ class AuthenticationFailed(GatewayError):
     """No valid token, or the token's user or tenant no longer exists. Always HTTP 401."""
 
 
+class Forbidden(GatewayError):
+    """Authenticated, but the caller's current roles do not allow this action. Always HTTP 403."""
+
+
+class AdminTargetNotFound(GatewayError):
+    """No such user in the caller's tenant. Another tenant's user is reported the same way (HTTP 404)."""
+
+
+class DuplicateUser(GatewayError):
+    """A user with this email already exists in the caller's tenant (HTTP 409)."""
+
+
 class TenantNotFound(GatewayError):
     """No tenant with the given slug."""
 

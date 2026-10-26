@@ -30,7 +30,7 @@ from gateway.config import get_settings
 from gateway.db import create_pool
 from gateway.llm.provider import OpenAICompatibleLLM
 from judge import JUDGE_PROMPT_VERSION, VERDICT_FIELDS, Source
-from run_eval import RESULTS_DIR, HarnessStopped, judge_and_log, preflight
+from run_eval import RESULTS_DIR, HarnessStopped, judge_and_log, preflight, require_stack
 
 EVAL_DIR = Path(__file__).resolve().parent
 CALIBRATION = EVAL_DIR / "judge_calibration_v2.jsonl"
@@ -105,6 +105,24 @@ def summarise(results: list[dict[str, Any]]) -> dict[str, Any]:
     return summary
 
 
+def partial_path(path: Path) -> Path:
+    return RESULTS_DIR / f"judge-calibration_{path.stem}.partial.jsonl"
+
+
+def read_done(partial: Path, judge_model: str) -> dict[str, dict[str, Any]]:
+    """Verdicts already paid for by this judge model and prompt version (a stopped run resumes)."""
+    if not partial.exists():
+        return {}
+    done = {}
+    for line in partial.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            rec = json.loads(line)
+            same = (rec["_judge_model"], rec["_judge_prompt_version"]) == (judge_model, JUDGE_PROMPT_VERSION)
+            if same and "verdict" in rec:
+                done[rec["id"]] = {k: v for k, v in rec.items() if not k.startswith("_")}
+    return done
+
+
 async def run(check_only: bool, path: Path = CALIBRATION) -> int:
     settings = get_settings()
     items = load(path)
@@ -129,16 +147,25 @@ async def run(check_only: bool, path: Path = CALIBRATION) -> int:
             update={"llm_max_completion_tokens": settings.eval_judge_max_completion_tokens}
         )
         judge_llm = OpenAICompatibleLLM(judge_settings, settings.eval_judge_tier)
+        partial = partial_path(path)
+        done = read_done(partial, judge_llm.model_id)
         async with pool.acquire() as conn:
             if await preflight(
-                conn, settings.llm_daily_token_limit, {judge_llm.model_id: [("eval_judge", len(items))]}
+                conn,
+                settings.llm_daily_token_limit,
+                {judge_llm.model_id: [("eval_judge", len(items) - len(done))]},
             ):
                 print("pre-flight: judge budget would be exceeded; not starting")
                 return 1
         delay_s = settings.eval_request_delay_ms / 1000
-        results = []
+        if done:
+            print(f"resuming: {len(done)} verdicts already in {partial.name}; judging the rest")
+        results = [done[i["id"]] for i in items if i["id"] in done]
+        RESULTS_DIR.mkdir(exist_ok=True)
         try:
             for n, item in enumerate(items, 1):
+                if item["id"] in done:
+                    continue
                 ctx = contexts[item["id"]]
                 sources = [
                     Source(f"S{k}", ctx[g][0], ctx[g][1]) for k, g in enumerate(item["context_gids"], 1)
@@ -167,6 +194,9 @@ async def run(check_only: bool, path: Path = CALIBRATION) -> int:
                     flush=True,
                 )
                 results.append(r)
+                with partial.open("a", encoding="utf-8") as f:
+                    tag = {"_judge_model": judge_llm.model_id, "_judge_prompt_version": JUDGE_PROMPT_VERSION}
+                    f.write(json.dumps({**r, **tag}) + "\n")
         except HarnessStopped as exc:
             print(f"STOPPED: {exc}")
             return 2
@@ -175,6 +205,8 @@ async def run(check_only: bool, path: Path = CALIBRATION) -> int:
     finally:
         await pool.close()
 
+    order = {i["id"]: n for n, i in enumerate(items)}
+    results.sort(key=lambda r: order[r["id"]])
     summary = summarise(results)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out_path = RESULTS_DIR / f"{stamp}_judge-calibration.json"
@@ -188,6 +220,7 @@ async def run(check_only: bool, path: Path = CALIBRATION) -> int:
     out_path.write_text(
         json.dumps({"meta": meta, "summary": summary, "results": results}, indent=1), encoding="utf-8"
     )
+    partial_path(path).unlink(missing_ok=True)
     print(f"\nresults: {out_path}")
     print(f"{'category':15s} {'caught':>8s} {'rate':>7s} {'full verdict match':>19s}  misses")
     for cat in CATEGORIES:
@@ -211,6 +244,7 @@ def main() -> None:
     parser.add_argument("--check", action="store_true", help="verify construction only; no LLM calls")
     parser.add_argument("--set", type=Path, default=CALIBRATION, help="calibration set (default: v2)")
     args = parser.parse_args()
+    require_stack()
     sys.exit(asyncio.run(run(args.check, args.set)))
 
 

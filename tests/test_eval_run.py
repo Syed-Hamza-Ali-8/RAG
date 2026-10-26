@@ -163,7 +163,7 @@ async def eval_app(
         "# Leave Policy\n\n## Annual\n\nStaff receive 21 days of annual leave.\n", encoding="utf-8"
     )
     await ingest_document(pool, embedder, settings, tenant_id=tenant_id, slug="hr-leave-policy", path=doc)
-    app = create_app(settings, llm=stub_llm)
+    app = create_app(settings, llm=stub_llm, embedder=embedder)
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as client:
             yield app, client

@@ -90,9 +90,9 @@ async def seeded(
 
 @pytest.fixture
 async def client(
-    settings: Settings, seeded: dict[str, UUID], stub_llm: StubLLM
+    settings: Settings, seeded: dict[str, UUID], stub_llm: StubLLM, embedder: Embedder
 ) -> AsyncIterator[httpx.AsyncClient]:
-    app = create_app(settings, llm=stub_llm)
+    app = create_app(settings, llm=stub_llm, embedder=embedder)
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
@@ -259,8 +259,12 @@ async def test_dev_token_issuer(client: httpx.AsyncClient) -> None:
     ).status_code == 401
 
 
-async def test_dev_token_issuer_is_off_unless_enabled(settings: Settings, seeded: dict[str, UUID]) -> None:
-    app = create_app(settings.model_copy(update={"auth_dev_issuer_enabled": False}), llm=StubLLM())
+async def test_dev_token_issuer_is_off_unless_enabled(
+    settings: Settings, seeded: dict[str, UUID], embedder: Embedder
+) -> None:
+    app = create_app(
+        settings.model_copy(update={"auth_dev_issuer_enabled": False}), llm=StubLLM(), embedder=embedder
+    )
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
             r = await c.post("/v1/auth/token", json={"tenant": "alpha", "email": "staff@alpha.example"})

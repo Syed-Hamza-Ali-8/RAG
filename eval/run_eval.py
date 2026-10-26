@@ -40,6 +40,7 @@ from gateway.main import create_app
 from gateway.query_log import QueryLogEntry, write_query_log
 from gateway.retrieval.vector import RetrievedChunk, vector_search
 from gateway.security.tokens import issue_token
+from gateway.stack import StackNotReady, check_stack, describe
 from judge import JUDGE_PROMPT_VERSION, JudgeParseError, Source, call_judge, parse_verdict
 from metrics import all_hops_at_k, hop_ranks, ndcg_at_k, recall_at_k, reciprocal_rank
 
@@ -59,6 +60,15 @@ SUBSET_SEED = "gateway-subset-v1"
 SUBSET_ALLOCATION = {
     25: {"buried_fact": 5, "single_other": 7, "multi_hop": 6, "unanswerable": 3, "near_miss_pairs": 2}
 }
+
+
+def require_stack() -> None:
+    """Container pre-flight (gateway.stack): refuse to start on a stack that is down."""
+    try:
+        status = check_stack()
+    except StackNotReady as exc:
+        raise SystemExit(f"pre-flight: {exc}") from exc
+    print(describe(status))
 
 
 class HarnessStopped(Exception):
@@ -707,6 +717,7 @@ def main() -> None:
         "--force", action="store_true", help="start even if the pre-flight budget check fails"
     )
     args = parser.parse_args()
+    require_stack()
     resumed = read_partial(Path(args.resume)) if args.resume else None
     sys.exit(asyncio.run(run(args, load_golden(), resumed, force=args.force)))
 

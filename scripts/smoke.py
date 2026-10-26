@@ -5,8 +5,6 @@ corpus, startup checks, or a real query that must come back cited.
 """
 
 import asyncio
-import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -18,6 +16,7 @@ from gateway.deps import auth_for_email
 from gateway.errors import GatewayError
 from gateway.main import create_app
 from gateway.security.tokens import issue_token
+from gateway.stack import StackNotReady, check_stack, describe
 
 ROOT = Path(__file__).resolve().parent.parent
 SMOKE_TENANT = "acme"
@@ -37,27 +36,12 @@ def ok(msg: str) -> None:
 
 def check_docker() -> None:
     try:
-        r = subprocess.run(["docker", "ps"], capture_output=True, text=True, timeout=30)
-    except FileNotFoundError:
-        fail("`docker` not found. Enable Docker Desktop WSL integration for this distro.")
-    except subprocess.TimeoutExpired:
-        fail("`docker ps` timed out. Is Docker Desktop running?")
-    if r.returncode != 0:
-        fail(f"`docker ps` failed: {r.stderr.strip() or r.stdout.strip()}")
-    ok("docker ps")
-
-    r = subprocess.run(
-        ["docker", "compose", "ps", "--format", "json"], capture_output=True, text=True, cwd=ROOT, timeout=30
-    )
-    if r.returncode != 0:
-        fail(f"`docker compose ps` failed: {r.stderr.strip()}")
-    services = {s["Service"]: s for s in (json.loads(line) for line in r.stdout.splitlines() if line.strip())}
-    for name in ("postgres", "redis"):
-        svc = services.get(name)
-        if svc is None or svc.get("Health") != "healthy":
-            state = "not running" if svc is None else f"{svc.get('State')}/{svc.get('Health') or 'no health'}"
-            fail(f"compose service {name} is {state}; run `docker compose up -d --wait`")
-    ok("compose services postgres, redis healthy")
+        status = check_stack()
+    except StackNotReady as exc:
+        fail(str(exc))
+    ok("docker ps; compose services " + ", ".join(status.services) + " healthy")
+    if status.other_containers:
+        print(describe(status).split("\n", 1)[1])
 
 
 async def check_app() -> None:

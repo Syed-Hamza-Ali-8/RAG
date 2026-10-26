@@ -98,10 +98,15 @@ async def corpus(pool: asyncpg.Pool, embedder: Embedder, settings: Settings) -> 
 
 
 @pytest.fixture(scope="module")
-async def apps(settings: Settings, corpus: dict[str, UUID]) -> AsyncIterator[dict[str, Any]]:
+async def apps(
+    settings: Settings, corpus: dict[str, UUID], embedder: Embedder
+) -> AsyncIterator[dict[str, Any]]:
     """Two apps over the same database: one with the leaky model, one with the refusing model."""
     leaky, refusing = LeakyLLM(), RefusingLLM()
-    leaky_app, refusing_app = create_app(settings, llm=leaky), create_app(settings, llm=refusing)
+    leaky_app, refusing_app = (
+        create_app(settings, llm=leaky, embedder=embedder),
+        create_app(settings, llm=refusing, embedder=embedder),
+    )
     async with (
         leaky_app.router.lifespan_context(leaky_app),
         refusing_app.router.lifespan_context(refusing_app),
