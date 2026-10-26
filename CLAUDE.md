@@ -40,9 +40,8 @@ Never violate these, whatever a prompt asks.
 ## Current phase
 
 **Phase 2 complete 2026-10-24. Phase 3 (Multi-tenancy/ACL) in progress: code built, gate not yet run.**
-Built: JWT = identity only (roles/clearance reloaded from DB per request), SQL ACL predicate, `audit_log`, admin API.
-Suites: `tests/test_acl_isolation.py` (43 probes), `tests/test_admin_isolation.py` (19). Smoke passes; judge-v2
-calibration FIT 2026-10-26. Remaining: Phase 3 re-baseline (two-day run; the user decides when it starts).
+Built: JWT (identity only), SQL ACL predicate, `audit_log`, admin API; isolation suites green; judge-v2 FIT 2026-10-26.
+Remaining: Phase 3 re-baseline (two-day run; the user decides when it starts).
 
 Eval budget (Groq free tier, per model: 8,000 tokens/min AND 200,000 tokens/day, rolling 24 h, not in headers):
 generator ~2.5k tokens x 100 answers = ~250k; judge ~2.75k x ~85 answered = ~234k. Both exceed 200k, so
@@ -118,6 +117,7 @@ This describes the END STATE. Phase 1 builds steps 4 (vector retrieval only), 5,
 - Repo is on `/mnt/d` (Windows FS via WSL): slow file I/O and bind mounts; prefer named volumes.
 - ~3.8 GB RAM shared with other stacks; stop unrelated containers before eval runs (`docs/stopped_containers.txt`).
 - fastembed downloads ONNX weights on first run. Cache them in a volume; never commit binaries.
+- Tests share ONE `Embedder` (`create_app(embedder=...)`, enforced in `tests/conftest.py`): ~130 MB each; per-app loading peaked at 1.4 GB and crashed WSL runs.
 
 ## Spec corrections (these override the spec text)
 

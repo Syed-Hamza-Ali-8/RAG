@@ -262,3 +262,32 @@ def test_read_partial_separates_records_from_session_lines(tmp_path: Path) -> No
 def test_budget_check() -> None:
     assert budget_check(used=150_000, per_call=2500, calls=20, limit=200_000) == (50_000, 50_000, True)
     assert budget_check(used=150_000, per_call=2500, calls=21, limit=200_000) == (52_500, 50_000, False)
+
+
+def _stack(monkeypatch: pytest.MonkeyPatch, others: list[str]) -> None:
+    import run_eval
+    from gateway.stack import StackStatus
+
+    status = StackStatus(services={"postgres": "healthy", "redis": "healthy"}, other_containers=others)
+    monkeypatch.setattr(run_eval, "check_stack", lambda: status)
+
+
+def test_strict_preflight_refuses_other_containers_without_force(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from run_eval import require_stack
+
+    _stack(monkeypatch, ["case_app_dev", "odoo_db"])
+    with pytest.raises(SystemExit, match="docker stop case_app_dev odoo_db") as exc:
+        require_stack(strict=True)
+    assert "--force" in str(exc.value)
+    require_stack(strict=True, force=True)
+    assert "proceeding anyway" in capsys.readouterr().out
+    require_stack()  # non-strict callers (calibrate_judge) only warn
+
+
+def test_strict_preflight_passes_on_a_clean_machine(monkeypatch: pytest.MonkeyPatch) -> None:
+    from run_eval import require_stack
+
+    _stack(monkeypatch, [])
+    require_stack(strict=True)

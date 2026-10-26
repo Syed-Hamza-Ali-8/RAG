@@ -2,7 +2,7 @@
 dropped and recreated per session. If Postgres is unreachable the tests fail, not skip."""
 
 import os
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 
 import asyncpg
@@ -10,6 +10,7 @@ import pytest
 from dotenv import dotenv_values
 from openai.types.chat import ChatCompletionMessageParam
 
+import gateway.main
 from gateway.config import Settings
 from gateway.db import apply_migrations, create_pool
 from gateway.ingest.embedder import Embedder
@@ -33,6 +34,21 @@ def _test_db_name() -> str:
     if not name.endswith("_test"):
         raise RuntimeError(f"refusing to drop {name!r}: TEST_POSTGRES_DB must end with '_test'")
     return name
+
+
+def _no_private_embedder(*_: object, **__: object) -> None:
+    raise RuntimeError(
+        "a test built an app without the shared embedder: pass create_app(..., embedder=embedder). "
+        "Each Embedder holds ~130 MB; one per test app peaked at 1.4 GB and crashed WSL runs (CLAUDE.md)."
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def one_embedder_per_session() -> Iterator[None]:
+    """Standing constraint: tests share the session `embedder`; apps never load their own."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(gateway.main, "Embedder", _no_private_embedder)
+        yield
 
 
 @pytest.fixture(scope="session")

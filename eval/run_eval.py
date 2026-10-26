@@ -62,13 +62,26 @@ SUBSET_ALLOCATION = {
 }
 
 
-def require_stack() -> None:
-    """Container pre-flight (gateway.stack): refuse to start on a stack that is down."""
+def require_stack(*, strict: bool = False, force: bool = False) -> None:
+    """Container pre-flight (gateway.stack): refuse to start on a stack that is down. With strict, also
+    refuse while other projects' containers are running (they share the machine's ~3.8 GB of RAM),
+    unless forced: a warning alone was ignored twice."""
     try:
         status = check_stack()
     except StackNotReady as exc:
         raise SystemExit(f"pre-flight: {exc}") from exc
-    print(describe(status))
+    if not (strict and status.other_containers):
+        print(describe(status))
+        return
+    names = " ".join(status.other_containers)
+    message = (
+        f"pre-flight: {len(status.other_containers)} non-Gateway container(s) running: {names}\n"
+        f"Stop them first (stop only, never remove; restart list in docs/stopped_containers.txt):\n"
+        f"  docker stop {names}"
+    )
+    if not force:
+        raise SystemExit(message + "\nor pass --force to run alongside them.")
+    print(message + "\nproceeding anyway: --force given.")
 
 
 class HarnessStopped(Exception):
@@ -714,10 +727,12 @@ def main() -> None:
     parser.add_argument("--delay-ms", type=int, help="override EVAL_REQUEST_DELAY_MS")
     parser.add_argument("--resume", metavar="PARTIAL", help="continue a stopped run from its .partial.jsonl")
     parser.add_argument(
-        "--force", action="store_true", help="start even if the pre-flight budget check fails"
+        "--force",
+        action="store_true",
+        help="start even if a pre-flight check fails (token budget, other projects' containers running)",
     )
     args = parser.parse_args()
-    require_stack()
+    require_stack(strict=True, force=args.force)
     resumed = read_partial(Path(args.resume)) if args.resume else None
     sys.exit(asyncio.run(run(args, load_golden(), resumed, force=args.force)))
 
