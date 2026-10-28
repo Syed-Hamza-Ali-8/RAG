@@ -473,10 +473,11 @@ def write_baseline_section(label: str, result: dict[str, Any], baseline_file: Pa
         f"- Generator: `{meta['generator_model']}` (tier `{meta['llm_tier']}`), "
         f"prompt `{meta['prompt_version']}`; judge: `{meta['judge_model']}` (tier `{meta['judge_tier']}`), "
         f"prompt `{meta['judge_prompt_version']}`",
-        "- Retrieval: vector-only, tenant-wide, no ACL filter; "
+        "- Retrieval: vector-only, ACL-filtered in SQL as each item's seeded `as_user`; "
         f"answers use top {meta['top_k']}; metrics at top {meta['retrieve_k']}",
         f"- Golden set hash `{meta['golden_hash']}`; corpus {meta['corpus_chunks']} chunks; "
-        f"commit `{meta['git_commit']}`",
+        "commits "
+        + ", ".join(f"`{c}`" for c in dict.fromkeys(meta.get("git_commits") or [meta["git_commit"]])),
         "",
         "| Retrieval (answerable items) | n | recall@5 | recall@6 | recall@10 | all-hops@10 | MRR "
         "| nDCG@10 |",

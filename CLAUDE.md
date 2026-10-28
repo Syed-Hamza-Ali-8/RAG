@@ -39,9 +39,8 @@ Never violate these, whatever a prompt asks.
 
 ## Current phase
 
-**Phase 2 complete 2026-10-24. Phase 3 (Multi-tenancy/ACL) in progress: code built, gate not yet run.**
-Built: JWT (identity only), SQL ACL predicate, `audit_log`, admin API; isolation suites green; judge-v2 FIT 2026-10-26.
-Remaining: Phase 3 re-baseline (two-day run; the user decides when it starts).
+**Phase 2 complete 2026-10-24. Phase 3 (Multi-tenancy/ACL): all four §5 gate items pass 2026-10-28; awaiting user approval.**
+Phase 3 baseline in `EVAL_RESULTS.md` (judge-v2). Open: truncated generations become refusals (q052; invariant 7).
 
 Eval budget (Groq free tier, per model: 8,000 tokens/min AND 200,000 tokens/day, rolling 24 h, not in headers):
 generator ~2.5k tokens x 100 answers = ~250k; judge ~2.75k x ~85 answered = ~234k. Both exceed 200k, so

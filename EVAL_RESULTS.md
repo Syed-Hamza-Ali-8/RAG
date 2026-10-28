@@ -172,6 +172,78 @@ which keeps the index scanning until LIMIT permitted rows are found in exact dis
 - **Comparisons:** Phase 3 vs Phase 2 is reported only as the ACL side effect described here.
   Phase 4 is judged against the Phase 3 baseline, and Phase 5 against Phase 4 (unchanged rule).
 
+## Golden set baseline — Phase 3
+
+Full run of all 100 golden-set items, 2026-10-28T10:35:06+00:00, by `uv run python eval/run_eval.py --baseline "Phase 3"`. Results: `eval/baselines/phase-3.json`.
+
+- Generator: `openai/gpt-oss-20b` (tier `small`), prompt `answer-v2`; judge: `openai/gpt-oss-120b` (tier `large`), prompt `judge-v2`
+- Retrieval: vector-only, ACL-filtered in SQL as each item's seeded `as_user`; answers use top 6; metrics at top 10
+- Golden set hash `d58769e8532dd8e0`; corpus 251 chunks; commits `4ce3880`, `9345912` (the second only fixes the stop message)
+- Three sessions: 2026-10-26 (29 items, stopped by the budget day plan), 2026-10-28 (18 items, stopped by a
+  transient connection failure at q109), 2026-10-28 (53 items, finished)
+
+| Retrieval (answerable items) | n | recall@5 | recall@6 | recall@10 | all-hops@10 | MRR | nDCG@10 |
+|---|---|---|---|---|---|---|---|
+| all_answerable | 85 | 84.1% | 86.5% | 92.9% | 87.1% | 0.700 | 0.728 |
+| single_hop | 50 | 88.0% | 92.0% | 98.0% | 98.0% | 0.679 | 0.752 |
+| buried_fact | 20 | 90.0% | 90.0% | 95.0% | 95.0% | 0.673 | 0.740 |
+| multi_hop | 25 | 70.0% | 70.0% | 80.0% | 60.0% | 0.748 | 0.667 |
+| near_miss | 10 | 100.0% | 100.0% | 100.0% | 100.0% | 0.683 | 0.762 |
+
+| Generation | rate | count / n |
+|---|---|---|
+| Refused unanswerable (hallucination guard) | 100.0% | 15 / 15 |
+| Refused answerable (false refusals) | 7.1% | 6 / 85 |
+| Faithful (judge, answered items) | 100.0% | 79 / 79 |
+| Relevant (judge, answered items) | 100.0% | 79 / 79 |
+| Citations supported (judge-v2, answered items) | 93.7% | 74 / 79 |
+| Correct (judge; refusals count as not correct) | 90.6% | 77 / 85 |
+| Near-miss pairs with both answers correct | 100.0% | 5 / 5 |
+
+Judge errors: 0. Hallucinated on unanswerable: none. Refused answerable: ['q106', 'q051', 'q052', 'q058', 'q064', 'q066'].
+
+### Phase 3 vs Phase 2, read through the pre-registered expectations
+
+**Retrieval moved as predicted, and the movement is the ACL side effect, not a retrieval gain.**
+Nothing that ranks chunks changed except that each item is now retrieved as its seeded user, whose
+permitted chunks are a subset of the tenant's. Recall@6 on answerable items went from 77.1% to 86.5%
+(recall@10 84.1% → 92.9%, MRR 0.636 → 0.700, multi-hop all-hops@10 44% → 60%). None of these is a
+retrieval improvement and none may be quoted as one; the README attributes them to the smaller
+candidate pool.
+
+- **No gold rank may get worse: held.** Per hop, 23 ranks improved, 87 are unchanged, 0 got worse.
+- **q022: held.** Rank 64 of 133 tenant-wide (outside the top 10) → **5th**; no longer refused, and
+  judged correct. q101 (its rewording) moved from outside the top 10 to 4th.
+- **Phase 5 criteria re-based.** Buried-fact recall@6 is now 90% (18/20) and multi-hop all-hops@10 60%
+  (15/25); Phase 5 is still judged against Phase 4, never against these or Phase 2's values.
+
+**Refusals (no judge involved; comparable).** Unanswerable items: 15/15 refused in both phases. False
+refusals on answerable items: 10 → 6. q022, q042, q060, q062 and q101 are no longer refused, each because
+a missing gold chunk now ranks in the top 6. Five refusals remain for the Phase 2 reason, a hop outside the
+top 6 (q051, q058, q064, q066 multi-hop; q106 at rank 10). One is new:
+
+- **q052 is a truncated generation, not a refusal.** Its retrieval improved (hop ranks [2, —] → [1, 7]).
+  `query_log` id 462: 700 completion tokens, exactly `LLM_MAX_COMPLETION_TOKENS`, and an empty answer;
+  the zero-citation check turned the empty text into a refusal. It is the only empty answer of 102
+  generation calls in the run. Recording a length cut-off as a refusal is close to the silent fallback
+  invariant 7 forbids; open item below.
+
+**Judge-scored numbers: not comparable with Phase 2** (pre-registered 2026-10-26). Correct went from
+85.9% (judge-v1) to 90.6% (judge-v2); that difference mixes the ACL effect, five fewer refusals and a
+stricter judge, and is not read as a change in answer quality. Where the verdicts differ on items
+answered in both phases: q109 correct under judge-v1, not correct under judge-v2 ("omits ... no
+additional egress charge", the c20 pattern); q057 the reverse. Faithful is 100% under both judges.
+
+**citations_supported (first baseline): 93.7%, 74/79 answered items.** The five misattributed citations:
+q019, q029, q037, q063, q070. This is the gap judge-v1 could not see; Phase 2 has no value for it.
+
+**Open items from this run (not fixed during the gate):**
+- Generation truncation: a completion that ends at the token limit with no answer should raise a typed
+  error and be logged, not become a refusal (invariant 7). Fix, or raise the limit, with the user's decision.
+- The run stopped once on a transient connection failure (five attempts over about 10 s); calibration hit
+  the same thing on 2026-10-26. Resume worked both times; a longer backoff for connection errors is a
+  candidate change.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
