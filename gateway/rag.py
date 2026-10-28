@@ -63,7 +63,13 @@ async def _cache_hit(
 
 
 async def _serve_cached(
-    pool: asyncpg.Pool, llm: LLM, auth: AuthContext, question: str, hit: CachedAnswer, started: float
+    pool: asyncpg.Pool,
+    llm: LLM,
+    auth: AuthContext,
+    question: str,
+    hit: CachedAnswer,
+    started: float,
+    lookup_ms: int,
 ) -> QueryResponse:
     total_ms = _ms(started)
     async with pool.acquire() as conn:
@@ -85,6 +91,7 @@ async def _serve_cached(
                 prompt_version=None,
                 outcome="answered",
                 cache_hit=True,
+                cache_lookup_ms=lookup_ms,
             ),
         )
         # Correction O: a hit copies retrieved_ids from the cached citations and sets the flag.
@@ -128,13 +135,16 @@ async def answer_query(
     started = time.perf_counter()
     acl_filter = auth.acl()
     use_cache = cache is not None and not cache.bypassed(question)
+    lookup_ms: int | None = None
     async with pool.acquire() as conn:
         query_vec = await embedder.embed_query(question)
         if use_cache:
             assert cache is not None
+            lookup_started = time.perf_counter()
             hit = await _cache_hit(conn, cache, auth, question, query_vec)
+            lookup_ms = _ms(lookup_started)
             if hit is not None:
-                return await _serve_cached(pool, llm, auth, question, hit, started)
+                return await _serve_cached(pool, llm, auth, question, hit, started, lookup_ms)
         chunks = await vector_search(conn, acl_filter=acl_filter, query_embedding=query_vec, top_k=top_k)
         denied = await denied_count(conn, acl_filter=acl_filter, query_embedding=query_vec, top_k=top_k)
     retrieval_ms = _ms(started)
@@ -207,6 +217,7 @@ async def answer_query(
                 prompt_version=PROMPT_VERSION if answer_raw is not None else None,
                 outcome=outcome,
                 cache_hit=False if use_cache else None,
+                cache_lookup_ms=lookup_ms,
             ),
         )
         if use_cache and outcome == "answered" and model is not None:

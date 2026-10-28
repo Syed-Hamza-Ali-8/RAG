@@ -379,6 +379,43 @@ numbers kept). It separates all five pairs, including nm4, which differs only in
   restricted value for its populating user, so a leak could not have shown; the verifier now requires it
   (commit `773f59c`).
 
+## Phase 4 cache threshold sweep: design and predictions (fixed 2026-10-28, before any real run)
+
+**Design (user-approved).** Thresholds 0.88, 0.90, 0.92, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99 on the fixed
+25-item subset, cache cleared before each. Phase A (cold): the 25 questions; nothing can hit, so it
+measures the lookup's cost on the miss path (`query_log.cache_lookup_ms`, migration 010). Phase B (warm),
+immediately after: the 25 again, then per item an exact repeat, a case/punctuation variant and a genuine
+paraphrase (`eval/cache_workload.jsonl`, committed with this section). Recorded per threshold: the three
+hit rates, faithfulness and correctness of served answers (judge-v2), p50 latency of hits and misses.
+**Hard gate at every threshold:** the full cache isolation suite passes (it includes the five near-miss
+pairs) and no hit serves another item's answer. A threshold that fails either is not a candidate.
+
+**Method, to fit the free-tier budget** (`eval/cache_sweep.py`). The real model answers each of the 25
+questions once (`--record`, cache off). The sweep then replays those recorded answers on misses: the
+cache's decisions do not depend on generated text, and every answer a hit can serve is the recorded real
+answer of the item's own question (asserted per hit). Re-running the model at every threshold would cost
+about 585 generation calls (~1.3M tokens, a week of budget) to produce answers the measurement never
+looks at. Consequences: miss latency in the table excludes the model (the recorded real LLM latency is
+reported beside it), and each distinct served (question, answer) pair is judged once, not per threshold.
+
+**Workload properties (measured, `cache_sweep.py --check`, no LLM):**
+- Variants keep their content words (one case, `5,000` → `5000`, exposed a gap: the content key now drops
+  thousands separators; decimal points still count). Variant cosine to its original: 0.973-1.000.
+- No paraphrase keeps all of its question's content words. Paraphrase cosine: 0.862-0.985, several above
+  every near-miss pair's cosine, which is the pre-registered finding again from the other side.
+
+**Predictions:**
+- **Paraphrase hit rate: 0/25 at every threshold.** The word check rules every paraphrase out before the
+  threshold applies. This is the measured cost of the word check.
+- Exact repeats and re-runs hit for every item the model answered when recorded, minus q074 (bypassed:
+  "current"); refused items are never stored.
+- Variants hit for every cacheable item whose variant cosine reaches the threshold: all of them up to
+  0.97; at 0.98 q100 (0.9731) misses; at 0.99 q107 (0.9831), q088 (0.9868), q052 (0.9800) and q100 miss.
+- Served answers are the item's own recorded answers, so served-answer faithfulness should match the
+  recorded answers' faithfulness at every threshold; a drop at a low threshold would mean a wrong hit.
+- One more measured fact: q074's paraphrase ("…at present…") escapes the bypass list, which is lexical.
+  It cannot hit (different content words), but the list does not catch every temporal phrasing.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the

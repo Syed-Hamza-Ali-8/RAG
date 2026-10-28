@@ -55,6 +55,10 @@ def test_content_key_is_stable_under_case_punctuation_order_and_stopwords() -> N
 def test_content_key_keeps_numbers_negations_and_comparatives() -> None:
     assert content_key("below 99.9% but at least 99.0%") != content_key("below 99.0%")
     assert content_key("claim of USD 2,000") != content_key("claim of USD 5,000")
+    # Thousands separators are punctuation; decimal points are not.
+    assert content_key("claim of USD 5,000") == content_key("claim of usd 5000")
+    assert content_key("PKR 1,300,000") == content_key("pkr 1300000")
+    assert content_key("below 99.9%") != content_key("below 999%")
     assert content_key("Is remote work allowed?") != content_key("Is remote work not allowed?")
     assert content_key("leave before the deadline") != content_key("leave after the deadline")
 

@@ -27,6 +27,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         help="DEMONSTRATION ONLY: remove the ACL predicate so tests/test_acl_isolation.py visibly fails",
     )
+    parser.addoption(
+        "--cache-threshold",
+        type=float,
+        default=None,
+        help="run tests/test_cache_isolation.py at this cache similarity threshold (the sweep's hard gate)",
+    )
 
 
 def _test_db_name() -> str:

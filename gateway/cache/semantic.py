@@ -30,6 +30,7 @@ STOPWORDS = frozenset(
     "your their they them has have had".split()
 )
 _TOKEN = re.compile(r"[a-z0-9]+(?:[.,][0-9]+)*")
+_THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}\b)")
 
 
 def role_signature(roles: tuple[str, ...] | list[str], clearance: int) -> str:
@@ -41,6 +42,7 @@ def content_key(question: str) -> str:
     """The question's content words, sorted: equal for case, punctuation, stopword and order changes;
     different whenever a content word or number differs (99.9% vs 99.0%, maternity vs paternity)."""
     text = question.lower().replace(chr(0x2019), "'").replace("'s", "")  # curly apostrophe
+    text = _THOUSANDS.sub("", text)  # 5,000 and 5000 are the same number; 99.9 and 99.0 are not
     return " ".join(sorted({t for t in _TOKEN.findall(text) if t not in STOPWORDS}))
 
 

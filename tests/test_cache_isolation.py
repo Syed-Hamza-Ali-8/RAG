@@ -40,7 +40,8 @@ from tests.conftest import StubLLM
 
 PROBES = load()
 IDS = [p["id"] for p in PROBES]
-SWEEP = (0.88, 0.92, 0.95, 0.99)
+# Every point of the Phase 4 threshold sweep.
+SWEEP = (0.88, 0.90, 0.92, 0.94, 0.95, 0.96, 0.97, 0.98, 0.99)
 _SOURCE_LABELS = [f"[S{n}]" for n in range(1, 21)]
 
 
@@ -61,10 +62,13 @@ class EchoLLM(StubLLM):
 
 @pytest.fixture(scope="module")
 async def app_client(
-    settings: Settings, embedder: Embedder, corpus: dict[str, UUID]
+    settings: Settings, embedder: Embedder, corpus: dict[str, UUID], pytestconfig: pytest.Config
 ) -> AsyncIterator[tuple[Any, httpx.AsyncClient, EchoLLM]]:
     llm = EchoLLM()
-    app = create_app(settings.model_copy(update={"cache_enabled": True}), llm=llm, embedder=embedder)
+    update: dict[str, Any] = {"cache_enabled": True}
+    if (threshold := pytestconfig.getoption("--cache-threshold")) is not None:
+        update["cache_similarity_threshold"] = threshold
+    app = create_app(settings.model_copy(update=update), llm=llm, embedder=embedder)
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as client:
             yield app, client, llm
