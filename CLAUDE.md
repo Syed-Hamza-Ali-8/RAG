@@ -39,7 +39,7 @@ Never violate these, whatever a prompt asks.
 
 ## Current phase
 
-**Phase 3 approved 2026-10-28. Phase 4 (Cache + routing) in progress: cache adversarial set committed, awaiting review.**
+**Phase 3 approved 2026-10-28. Phase 4 (Cache + routing): cache built, isolation suite green; tuning awaits review.**
 Phase 4 is judged against the Phase 3 baseline (`EVAL_RESULTS.md`, judge-v2; refusals 5 + 1 truncation).
 
 Eval budget (Groq free tier, per model: 8,000 tokens/min AND 200,000 tokens/day, rolling 24 h, not in headers):

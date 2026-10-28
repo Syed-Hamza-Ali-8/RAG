@@ -729,6 +729,11 @@ async def run(
             "judge_model": judge_llm.model_id if judge_llm else None,
             "judge_prompt_version": None if args.retrieval_only else JUDGE_PROMPT_VERSION,
             "top_k": settings.retrieval_top_k,
+            # Phase 4: answers may come from the semantic cache; recorded so no run is read without it.
+            "cache_enabled": settings.cache_enabled,
+            "cache_similarity_threshold": settings.cache_similarity_threshold
+            if settings.cache_enabled
+            else None,
             "retrieve_k": RETRIEVE_K,
             "delay_ms": int(delay_s * 1000),
             "started_utc": session_started,

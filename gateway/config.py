@@ -79,6 +79,24 @@ class Settings(BaseSettings):
     # eval pre-flight check; verify the current value in the provider console.
     llm_daily_token_limit: int = 200000
 
+    # Semantic cache (spec 4.2; EVAL_RESULTS.md Phase 4 finding). A hit needs the same tenant, role
+    # signature and content words; the cosine threshold is a second filter below the word check.
+    cache_enabled: bool = True
+    cache_similarity_threshold: float = 0.95
+    cache_ttl_hours: int = 24
+    # Questions matching any pattern (case-insensitive regex) are neither served from nor stored in the cache.
+    cache_bypass_patterns: list[str] = [
+        r"\btoday\b",
+        r"\byesterday\b",
+        r"\bnow\b",
+        r"\bcurrent(ly)?\b",
+        r"\blatest\b",
+        r"\bas of\b",
+        r"\bto date\b",
+        r"\b(this|last|next) (week|month|quarter|year)\b",
+        r"\bfor (client|customer)\s+\w",  # a named client, not "for client-requested work"
+    ]
+
     @property
     def database_dsn(self) -> str:
         return (

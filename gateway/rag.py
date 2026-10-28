@@ -1,5 +1,6 @@
-"""Request path: embed → ACL-filtered vector search → prompt → LLM → citation check →
-query_log + audit_log. Permissions come from the AuthContext, resolved from the database per request."""
+"""Request path: embed → semantic cache (tenant + role signature + content words) → ACL-filtered vector
+search → prompt → LLM → citation check → cache store (answers only) → query_log + audit_log.
+Permissions come from the AuthContext, resolved from the database per request."""
 
 import logging
 import time
@@ -7,6 +8,8 @@ from uuid import UUID
 
 import asyncpg
 
+from gateway.cache import semantic
+from gateway.cache.semantic import CacheConfig, CachedAnswer
 from gateway.deps import AuthContext
 from gateway.errors import TenantNotFound, TruncatedCompletion
 from gateway.ingest.embedder import Embedder
@@ -14,7 +17,7 @@ from gateway.llm.prompts import PROMPT_VERSION, REFUSAL_MESSAGE, build_messages,
 from gateway.llm.provider import LLM
 from gateway.models.query import Citation, QueryResponse, Timings
 from gateway.query_log import QueryLogEntry, write_query_log
-from gateway.retrieval.vector import denied_count, vector_search
+from gateway.retrieval.vector import denied_count, readable_count, vector_search
 from gateway.security.audit import AuditEntry, write_audit
 from gateway.security.guardrails import check_citations
 
@@ -32,6 +35,86 @@ async def resolve_tenant(conn: asyncpg.Connection, slug: str) -> UUID:
     return tenant_id
 
 
+async def _cache_hit(
+    conn: asyncpg.Connection,
+    cache: CacheConfig,
+    auth: AuthContext,
+    question: str,
+    query_vec: list[float],
+) -> CachedAnswer | None:
+    hit = await semantic.lookup(
+        conn,
+        tenant_id=auth.tenant_id,
+        signature=semantic.role_signature(auth.roles, auth.clearance),
+        key=semantic.content_key(question),
+        embedding=query_vec,
+        threshold=cache.threshold,
+    )
+    if hit is None:
+        return None
+    # Defence in depth: the key already scopes the entry to this permission set, and ACL changes wipe the
+    # tenant's cache (migration 003). Still, never serve a citation the caller cannot read right now.
+    cited = list({c.chunk_id for c in hit.citations})
+    if await readable_count(conn, acl_filter=auth.acl(), chunk_ids=cited) != len(cited):
+        log.warning("cache entry %s cites chunks the caller cannot read; discarded", hit.entry_id)
+        await semantic.discard(conn, hit.entry_id)
+        return None
+    return hit
+
+
+async def _serve_cached(
+    pool: asyncpg.Pool, llm: LLM, auth: AuthContext, question: str, hit: CachedAnswer, started: float
+) -> QueryResponse:
+    total_ms = _ms(started)
+    async with pool.acquire() as conn:
+        query_log_id = await write_query_log(
+            conn,
+            QueryLogEntry(
+                tenant_id=auth.tenant_id,
+                route_tier="cached",
+                model_used=hit.model_used,
+                prompt_tokens=None,
+                completion_tokens=None,
+                retrieval_ms=total_ms,
+                llm_ms=None,
+                total_ms=total_ms,
+                refused=False,
+                answer_raw=None,
+                citations_valid=None,
+                citations_rejected=None,
+                prompt_version=None,
+                outcome="answered",
+                cache_hit=True,
+            ),
+        )
+        # Correction O: a hit copies retrieved_ids from the cached citations and sets the flag.
+        await write_audit(
+            conn,
+            AuditEntry(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                user_roles=auth.roles,
+                user_clearance=auth.clearance,
+                query_text=question,
+                retrieved_ids=list(dict.fromkeys(c.chunk_id for c in hit.citations)),
+                denied_count=0,
+                refused=False,
+                answer=hit.answer,
+                served_from_cache=True,
+                query_log_id=query_log_id,
+            ),
+        )
+    return QueryResponse(
+        answer=hit.answer,
+        refused=False,
+        citations=hit.citations,
+        model=hit.model_used,
+        tier=llm.tier,
+        prompt_version=PROMPT_VERSION,
+        timings=Timings(retrieval_ms=total_ms, llm_ms=None, total_ms=total_ms),
+    )
+
+
 async def answer_query(
     pool: asyncpg.Pool,
     embedder: Embedder,
@@ -40,11 +123,18 @@ async def answer_query(
     auth: AuthContext,
     question: str,
     top_k: int,
+    cache: CacheConfig | None = None,
 ) -> QueryResponse:
     started = time.perf_counter()
     acl_filter = auth.acl()
+    use_cache = cache is not None and not cache.bypassed(question)
     async with pool.acquire() as conn:
         query_vec = await embedder.embed_query(question)
+        if use_cache:
+            assert cache is not None
+            hit = await _cache_hit(conn, cache, auth, question, query_vec)
+            if hit is not None:
+                return await _serve_cached(pool, llm, auth, question, hit, started)
         chunks = await vector_search(conn, acl_filter=acl_filter, query_embedding=query_vec, top_k=top_k)
         denied = await denied_count(conn, acl_filter=acl_filter, query_embedding=query_vec, top_k=top_k)
     retrieval_ms = _ms(started)
@@ -116,8 +206,24 @@ async def answer_query(
                 citations_rejected=citations_rejected,
                 prompt_version=PROMPT_VERSION if answer_raw is not None else None,
                 outcome=outcome,
+                cache_hit=False if use_cache else None,
             ),
         )
+        if use_cache and outcome == "answered" and model is not None:
+            # C8: only answered outcomes are stored; refusals and truncations never are.
+            assert cache is not None
+            await semantic.store(
+                conn,
+                tenant_id=auth.tenant_id,
+                signature=semantic.role_signature(auth.roles, auth.clearance),
+                key=semantic.content_key(question),
+                question=question,
+                embedding=query_vec,
+                answer=answer,
+                citations=citations,
+                model_used=model,
+                ttl_hours=cache.ttl_hours,
+            )
         await write_audit(
             conn,
             AuditEntry(

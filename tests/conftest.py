@@ -4,6 +4,7 @@ dropped and recreated per session. If Postgres is unreachable the tests fail, no
 import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
+from uuid import UUID
 
 import asyncpg
 import pytest
@@ -14,6 +15,7 @@ import gateway.main
 from gateway.config import Settings
 from gateway.db import apply_migrations, create_pool
 from gateway.ingest.embedder import Embedder
+from gateway.ingest.seed import seed_corpus
 from gateway.llm.provider import Completion
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,6 +62,7 @@ def settings() -> Settings:
         llm_small_base_url="http://stub.invalid/v1",
         llm_small_api_key="stub",
         llm_small_model_id="stub-model",
+        cache_enabled=False,  # suites that test the cache turn it on explicitly
     )
 
 
@@ -95,6 +98,18 @@ def embedder(settings: Settings) -> Embedder:
         settings.embedding_cache_dir,
         settings.embedding_batch_size,
     )
+
+
+@pytest.fixture(scope="session")
+async def corpus(pool: asyncpg.Pool, embedder: Embedder, settings: Settings) -> dict[str, UUID]:
+    """The real corpus, tenants and users, seeded once into the test database by the production seeder.
+    Shared by the isolation suites; a suite that changes a document restores it before it ends."""
+    await seed_corpus(pool, embedder, settings)
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT slug, id FROM tenants WHERE slug = ANY($1::text[])", ["acme", "globex"]
+        )
+    return {r["slug"]: r["id"] for r in rows}
 
 
 class StubLLM:

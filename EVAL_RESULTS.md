@@ -359,6 +359,26 @@ numbers kept). It separates all five pairs, including nm4, which differs only in
 - Rejected: a bypass for every question containing a number or code (too blunt on a corpus of fees,
   dates and limits) and a retrieved-chunk overlap check (near-miss pairs share their gold chunk).
 
+**Built 2026-10-28 (before any tuning):**
+- **Bypass list cost: 2 of 100 golden questions** never touch the cache: q056 ("…what setting must be
+  used *now*?") and q074 ("Sunridge's *current* annual fee"), both genuinely time-sensitive. The first
+  version also caught q024 ("for client-requested weekend work"): "for client" matched across the
+  hyphen. The pattern now requires a following name ("for client <name>"), so q024 is cacheable.
+- **Isolation suite: 73/73 pass** (`tests/test_cache_isolation.py`): the 28 probes, the five near-miss
+  pairs at each sweep threshold 0.88/0.92/0.95/0.99 with the word check on, and the mutation checks:
+  without the role signature every cross-role/clearance probe is served the wrong entry (with the
+  restricted value where it has one); without the tenant scope both cross-tenant probes leak; without the
+  word check at 0.88 all five near-miss pairs are served each other's answers.
+- **A second layer, measured on its own.** Before a hit is served, its cited chunks are re-checked against
+  the caller's ACL in SQL. With the signature removed from the key, that re-check alone still stops every
+  restricted value (8/8 probes). It does not stop k09 (an employee's answer served to HR), which cites
+  chunks HR may read: the key, not the re-check, is what keeps entries per permission set.
+- **Invalidation is enforced by the database** (migration 003 triggers on `documents` and `chunks`): any
+  insert, update or delete wipes that tenant's entries, whatever the write path.
+- One construction gap found and fixed during the build: k06/k18/k28's question did not retrieve the
+  restricted value for its populating user, so a leak could not have shown; the verifier now requires it
+  (commit `773f59c`).
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the

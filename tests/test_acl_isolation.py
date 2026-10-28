@@ -33,7 +33,6 @@ from openai.types.chat import ChatCompletionMessageParam
 import gateway.retrieval
 from gateway.config import Settings
 from gateway.ingest.embedder import Embedder
-from gateway.ingest.seed import seed_corpus
 from gateway.llm.prompts import REFUSAL_MESSAGE
 from gateway.main import create_app
 from gateway.security import acl
@@ -84,17 +83,6 @@ class RefusingLLM(StubLLM):
 def acl_disabled(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
     if request.config.getoption("--acl-disabled"):
         monkeypatch.setattr(acl, "acl_predicate", _no_acl)
-
-
-@pytest.fixture(scope="module")
-async def corpus(pool: asyncpg.Pool, embedder: Embedder, settings: Settings) -> dict[str, UUID]:
-    """The real corpus, tenants and users, seeded into the test database by the production seeder."""
-    await seed_corpus(pool, embedder, settings)
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT slug, id FROM tenants WHERE slug = ANY($1::text[])", ["acme", "globex"]
-        )
-    return {r["slug"]: r["id"] for r in rows}
 
 
 @pytest.fixture(scope="module")

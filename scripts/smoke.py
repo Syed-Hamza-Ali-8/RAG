@@ -55,6 +55,12 @@ async def check_app() -> None:
             )
             max_log_id = await conn.fetchval("SELECT coalesce(max(id), 0) FROM query_log")
             auth = await auth_for_email(conn, SMOKE_TENANT, SMOKE_USER)
+            # Only the smoke question's own entry, so the first request reaches the model.
+            await conn.execute(
+                "DELETE FROM semantic_cache WHERE tenant_id = $1 AND query_text = $2",
+                auth.tenant_id,
+                SMOKE_QUESTION,
+            )
     finally:
         await pool.close()
     if not chunks:
@@ -67,8 +73,13 @@ async def check_app() -> None:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://smoke", timeout=120) as client:
             token = issue_token(settings, user_id=auth.user_id, tenant_id=auth.tenant_id)
-            r = await client.post(
-                "/v1/query", json={"question": SMOKE_QUESTION}, headers={"Authorization": f"Bearer {token}"}
+            headers = {"Authorization": f"Bearer {token}"}
+            r = await client.post("/v1/query", json={"question": SMOKE_QUESTION}, headers=headers)
+            # With the cache on, the identical question again must be served from the cache.
+            again = (
+                await client.post("/v1/query", json={"question": SMOKE_QUESTION}, headers=headers)
+                if settings.cache_enabled
+                else None
             )
     if r.status_code != 200:
         fail(f"POST /v1/query -> {r.status_code}: {r.text}")
@@ -90,22 +101,34 @@ async def check_app() -> None:
             logged = await conn.fetchval("SELECT count(*) FROM query_log WHERE id > $1", max_log_id)
     finally:
         await pool.close()
-    if logged != 1:
-        fail(f"expected 1 new query_log row, found {logged}")
-    ok("query_log row written")
+    requests = 2 if again is not None else 1
+    if logged != requests:
+        fail(f"expected {requests} new query_log rows, found {logged}")
+    ok(f"query_log rows written ({requests})")
     pool = await create_pool(settings.database_dsn)
     try:
         async with pool.acquire() as conn:
-            audited = await conn.fetchval(
-                "SELECT count(*) FROM audit_log WHERE query_log_id > $1 AND user_id = $2",
+            audits = await conn.fetch(
+                "SELECT served_from_cache, retrieved_ids FROM audit_log "
+                "WHERE query_log_id > $1 AND user_id = $2 ORDER BY id",
                 max_log_id,
                 auth.user_id,
             )
     finally:
         await pool.close()
-    if audited != 1:
-        fail(f"expected 1 new audit_log row for {SMOKE_USER}, found {audited}")
-    ok("audit_log row written")
+    if len(audits) != requests:
+        fail(f"expected {requests} new audit_log rows for {SMOKE_USER}, found {len(audits)}")
+    ok("audit_log rows written")
+    if again is not None:
+        if again.status_code != 200 or again.json()["answer"] != body["answer"]:
+            fail(f"repeat query -> {again.status_code}: {again.text[:200]}")
+        if (
+            audits[0]["served_from_cache"]
+            or not audits[1]["served_from_cache"]
+            or not audits[1]["retrieved_ids"]
+        ):
+            fail("expected the first request from the model and the repeat from the cache, audited as such")
+        ok(f"repeat served from the semantic cache in {again.json()['timings']['total_ms']} ms")
 
 
 def main() -> None:

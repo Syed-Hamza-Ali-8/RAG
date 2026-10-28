@@ -69,3 +69,17 @@ async def denied_count(
 ) -> int:
     count: int = await conn.fetchval(_denied_sql(), query_embedding, top_k, *acl_filter.params())
     return count
+
+
+def _permitted_sql() -> str:
+    # How many of the given chunk ids the caller may read. $1 chunk ids, $2-$4 ACL. Used to re-check a
+    # cache hit's citations before serving it (defence in depth on top of the role-signature key).
+    # Constant text plus acl_predicate's validated alias/positions; all values are bound parameters.
+    return "SELECT count(*) FROM chunks c WHERE c.id = ANY($1::uuid[]) AND " + acl.acl_predicate("c", 2)  # noqa: S608
+
+
+async def readable_count(
+    conn: asyncpg.Connection, *, acl_filter: acl.AclFilter, chunk_ids: list[UUID]
+) -> int:
+    count: int = await conn.fetchval(_permitted_sql(), chunk_ids, *acl_filter.params())
+    return count

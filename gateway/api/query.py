@@ -21,4 +21,5 @@ async def query(
         auth=auth,
         question=body.question,
         top_k=body.top_k or state.settings.retrieval_top_k,
+        cache=state.cache,
     )

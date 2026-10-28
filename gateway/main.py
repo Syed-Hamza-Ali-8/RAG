@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from gateway.api import admin, auth, query
+from gateway.cache.semantic import CacheConfig
 from gateway.config import Settings, get_settings
 from gateway.db import assert_embedding_dim, assert_migrations_applied, create_pool
 from gateway.errors import (
@@ -54,6 +55,13 @@ def create_app(
             app.state.pool = pool
             app.state.embedder = built_embedder
             app.state.llm = built_llm
+            app.state.cache = (
+                CacheConfig.from_patterns(
+                    s.cache_similarity_threshold, s.cache_ttl_hours, s.cache_bypass_patterns
+                )
+                if s.cache_enabled
+                else None
+            )
             log.info("gateway ready: tier=%s model=%s", built_llm.tier, built_llm.model_id)
             yield
         finally:
