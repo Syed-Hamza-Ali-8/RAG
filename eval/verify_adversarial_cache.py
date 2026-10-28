@@ -31,7 +31,10 @@ LIVENESS (checked here, and re-proved by mutation in the test suite):
 - cross_role / cross_clearance pairs differ in signature within one tenant; cross_tenant pairs have the
   SAME signature in different tenants, so only tenant_id separates them;
 - near-miss pairs have cosine >= 0.88, so a similarity-only cache at the bottom of the sweep conflates
-  every one of them.
+  every one of them;
+- a probe with forbidden strings is live only if the populating user's own retrieval (production
+  ACL-filtered vector search, top RETRIEVAL_TOP_K) returns a chunk holding one, so the stored answer
+  actually carries the restricted value a leak would expose.
 Invariant 11: a failing probe means the code is wrong, never the probe.
 """
 
@@ -45,7 +48,9 @@ from typing import Any
 
 from gateway.config import get_settings
 from gateway.db import create_pool
+from gateway.deps import auth_for_email
 from gateway.ingest.embedder import Embedder
+from gateway.retrieval.vector import vector_search
 from verify_adversarial import all_chunks, permitted
 
 EVAL_DIR = Path(__file__).resolve().parent
@@ -186,13 +191,28 @@ async def main(review: bool) -> int:
     if len({p["id"] for p in probes}) != len(probes):
         errors.append("duplicate probe ids")
     settings = get_settings()
+    embedder = Embedder(settings.embedding_model_id, settings.embedding_dim, settings.embedding_cache_dir)
     pool = await create_pool(settings.database_dsn)
     try:
         async with pool.acquire() as conn:
             chunks = await all_chunks(conn)
+            for p in probes:
+                if not p["forbidden_strings"]:
+                    continue
+                auth = await auth_for_email(conn, p["populate"]["tenant"], p["populate"]["as_user"])
+                hits = await vector_search(
+                    conn,
+                    acl_filter=auth.acl(),
+                    query_embedding=await embedder.embed_query(questions(p)[0]),
+                    top_k=settings.retrieval_top_k,
+                )
+                if not any(s.lower() in h.content.lower() for h in hits for s in p["forbidden_strings"]):
+                    errors.append(
+                        f"{p['id']}: not live: the populating user's top {settings.retrieval_top_k} "
+                        "holds no forbidden string, so its stored answer cannot leak one"
+                    )
     finally:
         await pool.close()
-    embedder = Embedder(settings.embedding_model_id, settings.embedding_dim, settings.embedding_cache_dir)
     cosines: dict[str, float] = {}
     for p in probes:
         errors += check_probe(p, users, chunks)
