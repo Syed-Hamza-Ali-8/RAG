@@ -8,7 +8,7 @@ from uuid import UUID
 import asyncpg
 
 from gateway.deps import AuthContext
-from gateway.errors import TenantNotFound
+from gateway.errors import TenantNotFound, TruncatedCompletion
 from gateway.ingest.embedder import Embedder
 from gateway.llm.prompts import PROMPT_VERSION, REFUSAL_MESSAGE, build_messages, source_label
 from gateway.llm.provider import LLM
@@ -57,13 +57,22 @@ async def answer_query(
     citations_rejected: int | None = None
     answer = REFUSAL_MESSAGE
     citations: list[Citation] = []
+    truncated: TruncatedCompletion | None = None
 
     # Nothing permitted retrieved → refuse without an LLM call. This branch depends only on what the
     # caller may read, never on what was denied, so it reveals nothing about restricted documents.
     if chunks:
         llm_started = time.perf_counter()
-        completion = await llm.complete(build_messages(question, chunks))
+        try:
+            completion = await llm.complete(build_messages(question, chunks))
+        except TruncatedCompletion as exc:
+            truncated = exc
         llm_ms = _ms(llm_started)
+    if truncated is not None:
+        # Logged and audited like any query that reached the LLM, then raised: never a refusal.
+        model, answer_raw = truncated.model, truncated.text
+        prompt_tokens, completion_tokens = truncated.prompt_tokens, truncated.completion_tokens
+    elif chunks:
         model = completion.model
         prompt_tokens, completion_tokens = completion.prompt_tokens, completion.completion_tokens
         answer_raw = completion.text
@@ -86,7 +95,8 @@ async def answer_query(
                 for i in check.valid_indices
             ]
 
-    refused = not citations
+    refused = truncated is None and not citations
+    outcome = "truncated" if truncated is not None else ("refused" if refused else "answered")
     total_ms = _ms(started)
     async with pool.acquire() as conn:
         query_log_id = await write_query_log(
@@ -105,6 +115,7 @@ async def answer_query(
                 citations_valid=citations_valid,
                 citations_rejected=citations_rejected,
                 prompt_version=PROMPT_VERSION if answer_raw is not None else None,
+                outcome=outcome,
             ),
         )
         await write_audit(
@@ -118,10 +129,12 @@ async def answer_query(
                 retrieved_ids=[c.chunk_id for c in chunks],
                 denied_count=denied,
                 refused=refused,
-                answer=answer,
+                answer="" if truncated is not None else answer,
                 query_log_id=query_log_id,
             ),
         )
+    if truncated is not None:
+        raise truncated
     return QueryResponse(
         answer=answer,
         refused=refused,

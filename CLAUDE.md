@@ -39,8 +39,8 @@ Never violate these, whatever a prompt asks.
 
 ## Current phase
 
-**Phase 2 complete 2026-10-24. Phase 3 (Multi-tenancy/ACL): all four §5 gate items pass 2026-10-28; awaiting user approval.**
-Phase 3 baseline in `EVAL_RESULTS.md` (judge-v2). Open: truncated generations become refusals (q052; invariant 7).
+**Phase 3 (Multi-tenancy/ACL) approved 2026-10-28 — gate closed. Phase 4 (Cache + routing) — not started.**
+Phase 4 is judged against the Phase 3 baseline (`EVAL_RESULTS.md`, judge-v2; refusals 5 + 1 truncation).
 
 Eval budget (Groq free tier, per model: 8,000 tokens/min AND 200,000 tokens/day, rolling 24 h, not in headers):
 generator ~2.5k tokens x 100 answers = ~250k; judge ~2.75k x ~85 answered = ~234k. Both exceed 200k, so

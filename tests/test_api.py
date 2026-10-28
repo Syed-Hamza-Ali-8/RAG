@@ -307,3 +307,42 @@ async def test_rate_limit_response_does_not_leak_provider_detail(
     assert r.status_code == 503
     assert r.json() == {"error": "llm_rate_limited", "detail": "HTTP 429 after 5 attempts"}
     assert "org_SECRETORG" not in r.text
+
+
+async def test_truncated_completion_is_its_own_outcome_not_a_refusal(
+    client: httpx.AsyncClient, stub_llm: StubLLM, pool: asyncpg.Pool, seeded: dict[str, UUID]
+) -> None:
+    from gateway.errors import TruncatedCompletion
+
+    def cut_off(_: object) -> str:
+        raise TruncatedCompletion("stub-model", 2300, 1000, "partial reasoning that quotes SECRET-TEXT")
+
+    stub_llm.reply = cut_off
+    async with pool.acquire() as conn:
+        before = await conn.fetchval("SELECT coalesce(max(id), 0) FROM query_log")
+    r = await ask(client, "alpha", "How much annual leave?")
+    assert r.status_code == 502 and r.json() == {"error": "llm_truncated"}
+    assert "SECRET-TEXT" not in r.text
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM query_log WHERE id > $1", before)
+        audit = await conn.fetchrow("SELECT * FROM audit_log WHERE query_log_id = $1", row["id"])
+    assert (row["outcome"], row["refused"]) == ("truncated", False)
+    assert (row["completion_tokens"], row["answer_raw"]) == (
+        1000,
+        "partial reasoning that quotes SECRET-TEXT",
+    )
+    # Chunks reached the LLM, so the query is audited like any other; it is not recorded as a refusal.
+    assert audit is not None and audit["refused"] is False and audit["retrieved_ids"]
+
+
+async def test_answers_and_refusals_record_their_outcome(
+    client: httpx.AsyncClient, stub_llm: StubLLM, pool: asyncpg.Pool
+) -> None:
+    async with pool.acquire() as conn:
+        before = await conn.fetchval("SELECT coalesce(max(id), 0) FROM query_log")
+    assert (await ask(client, "alpha", "How much annual leave?")).json()["refused"] is False
+    stub_llm.reply = lambda _: "I cannot say."
+    assert (await ask(client, "alpha", "How much annual leave?")).json()["refused"] is True
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT outcome, refused FROM query_log WHERE id > $1 ORDER BY id", before)
+    assert [(r["outcome"], r["refused"]) for r in rows] == [("answered", False), ("refused", True)]

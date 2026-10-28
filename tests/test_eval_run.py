@@ -317,3 +317,51 @@ def test_item_cost_judges_only_answerable_items() -> None:
         "g": 1000 * BUDGET_MARGIN,
         "j": 2000 * BUDGET_MARGIN,
     }
+
+
+def test_truncation_is_neither_a_refusal_nor_a_hallucination() -> None:
+    records = [
+        rec("a", "single_hop", 1.0, False, judge=verdict(True)),
+        rec("b", "single_hop", 1.0, True),
+        rec("c", "multi_hop", 1.0, False, truncated=True),
+        rec("u1", "unanswerable", 0, True),
+        rec("u2", "unanswerable", 0, False, truncated=True),
+    ]
+    g = aggregate(records)["generation"]
+    assert g["false_refusal_answerable"] == {"rate": 0.5, "n": 2, "count": 1}  # c is not in the denominator
+    assert g["correct_refusal_unanswerable"] == {"rate": 1.0, "n": 1, "count": 1}  # nor is u2
+    assert g["hallucinated_on_unanswerable"] == []
+    assert g["truncated_generations"] == {"rate": 0.4, "n": 5, "count": 2}
+    assert g["truncated_items"] == ["c", "u2"]
+    assert g["correct_answerable"] == {"rate": round(1 / 3, 4), "n": 3, "count": 1}  # c counts as not correct
+    assert g["refused_answerable"] == ["b"]
+
+
+async def test_truncated_judge_call_is_logged_and_recorded_as_a_judge_error(
+    eval_app: tuple[Any, httpx.AsyncClient], settings: Settings
+) -> None:
+    from gateway.errors import TruncatedCompletion
+
+    class CutOffJudge(StubJudge):
+        async def complete(self, messages: list[ChatCompletionMessageParam]) -> Completion:
+            raise TruncatedCompletion("stub-judge", 2500, 1500, '{"faithful": tr')
+
+    app, client = eval_app
+    item = {
+        "id": "t3",
+        "type": "single_hop",
+        "tags": [],
+        "tenant": "evalco",
+        "as_user": "hr@evalco.example",
+        "question": "How much annual leave do staff get?",
+        "expected_answer": "21 days.",
+        "evidence": [{"text": "21 days", "chunk_ids": ["hr-leave-policy#0"]}],
+    }
+    record = await evaluate_item(item, client, app.state.pool, app.state, CutOffJudge(), settings, delay_s=0)
+    assert "judge" not in record and "completion limit" in record["judge_error"]
+    async with app.state.pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT purpose, outcome, completion_tokens FROM query_log WHERE id = $1",
+            record["judge_query_log_id"],
+        )
+    assert (row["purpose"], row["outcome"], row["completion_tokens"]) == ("eval_judge", "truncated", 1500)

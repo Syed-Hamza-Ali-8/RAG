@@ -226,7 +226,18 @@ top 6 (q051, q058, q064, q066 multi-hop; q106 at rank 10). One is new:
   `query_log` id 462: 700 completion tokens, exactly `LLM_MAX_COMPLETION_TOKENS`, and an empty answer;
   the zero-citation check turned the empty text into a refusal. It is the only empty answer of 102
   generation calls in the run. Recording a length cut-off as a refusal is close to the silent fallback
-  invariant 7 forbids; open item below.
+  invariant 7 forbids; fixed afterwards (see "Corrections after the Phase 3 gate" below).
+
+**Corrected refusal counts (2026-10-28).** The refusal counts above mix two outcomes. Read them as:
+
+| | Refused (answerable) | Truncated | As recorded |
+|---|---|---|---|
+| Phase 2 baseline | **9** | 1 (q060, `query_log` 253) | 10 |
+| Phase 3 baseline | **5** | 1 (q052, `query_log` 462) | 6 |
+
+Both truncations have the same signature (700 completion tokens, empty answer) and were found by
+migration 009's backfill; no other row matches. The Phase 2 write-up's "all refusals are retrieval misses"
+holds for the 9 true refusals. The baseline JSON files are left as run; this table is the correction.
 
 **Judge-scored numbers: not comparable with Phase 2** (pre-registered 2026-10-26). Correct went from
 85.9% (judge-v1) to 90.6% (judge-v2); that difference mixes the ACL effect, five fewer refusals and a
@@ -237,12 +248,51 @@ additional egress charge", the c20 pattern); q057 the reverse. Faithful is 100% 
 **citations_supported (first baseline): 93.7%, 74/79 answered items.** The five misattributed citations:
 q019, q029, q037, q063, q070. This is the gap judge-v1 could not see; Phase 2 has no value for it.
 
-**Open items from this run (not fixed during the gate):**
-- Generation truncation: a completion that ends at the token limit with no answer should raise a typed
-  error and be logged, not become a refusal (invariant 7). Fix, or raise the limit, with the user's decision.
-- The run stopped once on a transient connection failure (five attempts over about 10 s); calibration hit
-  the same thing on 2026-10-26. Resume worked both times; a longer backoff for connection errors is a
-  candidate change.
+### Citation misattribution: what the five failures look like (recorded before Phase 4/5)
+
+Examined 2026-10-28 so that a change in which chunks are available (hybrid retrieval, Phase 5) can be
+compared against what the failure looked like here. Not fixed; no prompt or code change.
+
+- **Every one is a stacked double citation.** All five answers end one sentence with two markers
+  (`[Sx][Sy]`) and the judge rejects one of the pair. Base rate: 22 of 79 answered items stack two
+  markers and 5 of those 22 are flagged (23%); none of the 57 single-marker answers is flagged.
+- **Single-hop, correct answers, one extra citation (q019, q037).** The first marker is the gold chunk and
+  supports the claim; the second is a related chunk from a *different* document that lacks the key fact
+  (q019: `hr-employee-handbook#5` has no "Priya Raman"; q037: `public-service-catalog#0` has no
+  15 January to 31 March range). The answer is right; the second citation is decoration.
+- **Multi-hop, one compound sentence over two hops (q063, q070).** One sentence states both hops and
+  cites two chunks; one cited chunk is the *adjacent chunk of the right document* rather than the gold
+  chunk, although the gold chunk was among the six sources (q063 cites `eng-postmortem-2026-03-atlas-outage#9`
+  where gold #8 was S5; q070 cites `eng-platform-architecture#2` where gold #1 was S1). Both answers are
+  judged correct. Sentence-level checking also penalises a sentence whose halves are each supported by
+  a different marker; that interacts with this pattern.
+- **A wrong answer, not a citation slip (q029).** The known neighbouring-fact item (the c10 pattern): the
+  gold chunk ranks 9th, outside the six sources, and the model gives the audit-committee meeting date
+  (20 April 2027) instead of the report deadline (30 April 2027), citing two other chunks of the same
+  engagement letter. Judged not correct; the misattribution is a symptom of the retrieval miss.
+- **Stable across phases, not caused by the ACL.** q019, q063 and q070 cited exactly the same chunks in
+  Phase 2; judge-v1 had no way to flag them.
+
+What to watch in Phase 5: whether the stacked-marker rate or the adjacent-chunk substitution changes when
+FTS and graph paths add neighbouring chunks to the six sources; q029 should change only if its gold chunk
+enters the top 6.
+
+### Corrections after the Phase 3 gate (2026-10-28)
+
+- **Truncation is its own outcome.** The provider raises `TruncatedCompletion` when the finish reason is
+  `length`; `/v1/query` logs and audits the query, then returns HTTP 502 `llm_truncated` (never a refusal).
+  `query_log.outcome` (migration 009) is `answered`, `refused` or `truncated`; eval reports list truncations
+  separately and leave them out of both refusal rates. `LLM_MAX_COMPLETION_TOKENS` raised from 700 to 1000.
+- **q052 re-run alone at 1000 tokens: it completes (650 tokens) and refuses; it does not answer.** The
+  refusal is genuine. Its second hop, Mei Lin Zhou's role, is readable by its user (`finance@acme`) only
+  in `public-company-overview#0`, which ranks 7th, outside the six sources. Phase 2 answered q052
+  correctly by citing `eng-platform-architecture#0`, which is restricted to the engineering role: an
+  answer only possible because Phase 2 retrieval had no ACL. q052 now belongs with q051, q058, q064 and
+  q066 (a hop outside the top 6), so at the corrected limit the Phase 3 refusal count would be 6 again,
+  all genuine. That is a single re-run, not a baseline; the next full run measures it.
+- **Network retries have their own policy.** Connection errors and timeouts retry up to 8 times, 2 s
+  doubling to a 30 s cap (about two minutes of waiting), separate from the 429/5xx budget, so the 10 s
+  blips that stopped the baseline and the calibration on 2026-10-26 no longer stop a run.
 
 ## Measurement notes
 

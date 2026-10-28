@@ -20,6 +20,7 @@ async def test_all_migrations_applied_and_rerun_is_noop(pool: asyncpg.Pool) -> N
         "006_query_log_answer",
         "007_query_log_prompt_version",
         "008_query_log_purpose",
+        "009_query_log_outcome",
     ]
 
 
@@ -48,3 +49,21 @@ async def test_embedding_dim_check(pool: asyncpg.Pool) -> None:
         await assert_embedding_dim(conn, 384, 384)
         with pytest.raises(EmbeddingDimensionMismatch):
             await assert_embedding_dim(conn, 768, 768)
+
+
+async def test_query_log_outcome_must_agree_with_refused(pool: asyncpg.Pool) -> None:
+    async with pool.acquire() as conn:
+        tid = await conn.fetchval(
+            "INSERT INTO tenants (slug, name) VALUES ('outcomeco', 'OutcomeCo') "
+            "ON CONFLICT (slug) DO UPDATE SET name = 'OutcomeCo' RETURNING id"
+        )
+        insert = (
+            "INSERT INTO query_log (tenant_id, route_tier, retrieval_ms, total_ms, refused, outcome) "
+            "VALUES ($1, 'small', 1, 1, $2, $3)"
+        )
+        for refused, outcome in ((True, "answered"), (False, "refused"), (True, "truncated")):
+            with pytest.raises(asyncpg.CheckViolationError):
+                await conn.execute(insert, tid, refused, outcome)
+        with pytest.raises(asyncpg.CheckViolationError):
+            await conn.execute(insert, tid, False, "partial")
+        await conn.execute(insert, tid, False, "truncated")

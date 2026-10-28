@@ -7,7 +7,7 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
 from gateway.config import Settings, Tier
-from gateway.errors import LLMProviderError
+from gateway.errors import LLMProviderError, TruncatedCompletion
 from gateway.llm.retry import with_retry
 
 
@@ -56,12 +56,24 @@ class OpenAICompatibleLLM:
             max_attempts=s.llm_max_attempts,
             base_delay_s=s.llm_backoff_base_s,
             max_delay_s=s.llm_backoff_max_s,
+            network_max_attempts=s.llm_network_max_attempts,
+            network_base_delay_s=s.llm_network_backoff_base_s,
+            network_max_delay_s=s.llm_network_backoff_max_s,
         )
-        if not response.choices or response.choices[0].message.content is None:
+        if not response.choices:
+            raise LLMProviderError(f"{self.model_id} returned no choices")
+        choice, usage = response.choices[0], response.usage
+        if choice.finish_reason == "length":
+            raise TruncatedCompletion(
+                response.model or self.model_id,
+                usage.prompt_tokens if usage else None,
+                usage.completion_tokens if usage else None,
+                choice.message.content or "",
+            )
+        if choice.message.content is None:
             raise LLMProviderError(f"{self.model_id} returned no message content")
-        usage = response.usage
         return Completion(
-            text=response.choices[0].message.content,
+            text=choice.message.content,
             model=response.model or self.model_id,
             prompt_tokens=usage.prompt_tokens if usage else None,
             completion_tokens=usage.completion_tokens if usage else None,

@@ -37,6 +37,20 @@ class AuthenticationFailed(GatewayError):
     """No valid token, or the token's user or tenant no longer exists. Always HTTP 401."""
 
 
+class TruncatedCompletion(GatewayError):
+    """The completion hit the token limit (finish reason 'length'). Neither an answer nor a refusal:
+    logged as outcome 'truncated' and returned as HTTP 502, never turned into a refusal (invariant 7)."""
+
+    def __init__(
+        self, model: str, prompt_tokens: int | None, completion_tokens: int | None, text: str
+    ) -> None:
+        super().__init__(f"{model} stopped at the completion limit after {completion_tokens} tokens")
+        self.model = model
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.text = text  # whatever was produced before the cut-off; may quote documents, never log it
+
+
 class Forbidden(GatewayError):
     """Authenticated, but the caller's current roles do not allow this action. Always HTTP 403."""
 

@@ -33,7 +33,7 @@ import httpx
 
 from gateway.config import Settings, get_settings
 from gateway.deps import auth_for_email
-from gateway.errors import LLMProviderError
+from gateway.errors import LLMProviderError, TruncatedCompletion
 from gateway.llm.prompts import PROMPT_VERSION
 from gateway.llm.provider import Completion, OpenAICompatibleLLM
 from gateway.main import create_app
@@ -176,8 +176,13 @@ def aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
     out: dict[str, Any] = {"retrieval": retrieval}
     generated = [r for r in records if "refused" in r]
     if generated:
-        unanswerable = [r for r in generated if r["type"] == "unanswerable"]
+        # A truncated generation (TruncatedCompletion) is neither an answer nor a refusal: it is left out of
+        # both refusal rates and the hallucination check, counts as not correct, and is reported on its own.
+        truncated = [r for r in generated if r.get("truncated")]
+        completed = [r for r in generated if not r.get("truncated")]
+        unanswerable = [r for r in completed if r["type"] == "unanswerable"]
         ans = [r for r in generated if r["type"] != "unanswerable"]
+        ans_completed = [r for r in ans if not r.get("truncated")]
         judged = [r for r in generated if r.get("judge")]
         pairs: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for r in ans:
@@ -185,7 +190,8 @@ def aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
                 pairs[r["pair"]].append(r)
         out["generation"] = {
             "correct_refusal_unanswerable": _rate([r["refused"] for r in unanswerable]),
-            "false_refusal_answerable": _rate([r["refused"] for r in ans]),
+            "false_refusal_answerable": _rate([r["refused"] for r in ans_completed]),
+            "truncated_generations": _rate([bool(r.get("truncated")) for r in generated]),
             "faithful": _rate([r["judge"]["faithful"] for r in judged]),
             "relevant": _rate([r["judge"]["relevant"] for r in judged]),
             # judge-v2 only; judge-v1 verdicts have no citation check, so they are excluded, not counted.
@@ -200,6 +206,7 @@ def aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
             "judge_errors": sum(1 for r in generated if r.get("judge_error")),
             "hallucinated_on_unanswerable": [r["id"] for r in unanswerable if not r["refused"]],
             "refused_answerable": [r["id"] for r in ans if r["refused"]],
+            "truncated_items": [r["id"] for r in truncated],
         }
     return out
 
@@ -237,7 +244,12 @@ def gid(chunk: RetrievedChunk) -> str:
 
 
 async def log_judge_call(
-    pool: asyncpg.Pool, tenant_id: Any, judge_llm: OpenAICompatibleLLM, completion: Completion, llm_ms: int
+    pool: asyncpg.Pool,
+    tenant_id: Any,
+    judge_llm: OpenAICompatibleLLM,
+    completion: Completion,
+    llm_ms: int,
+    outcome: str = "answered",
 ) -> int:
     """Record a judge call in query_log (purpose 'eval_judge') so its tokens count against the judge
     model's daily budget in the pre-flight check. answer_raw holds the raw judge output."""
@@ -259,6 +271,7 @@ async def log_judge_call(
                 citations_rejected=None,
                 prompt_version=JUDGE_PROMPT_VERSION,
                 purpose="eval_judge",
+                outcome=outcome,
             ),
         )
         log_id: int = await conn.fetchval(
@@ -285,6 +298,16 @@ async def judge_and_log(
     except LLMProviderError as exc:
         detail = exc.describe() if hasattr(exc, "describe") else str(exc)
         raise HarnessStopped(f"judge call failed: {detail}") from exc
+    except TruncatedCompletion as exc:
+        # Its tokens still count against the judge budget, so it is logged; the verdict is a judge error.
+        llm_ms = round((time.perf_counter() - started) * 1000)
+        cut = Completion(exc.text, exc.model, exc.prompt_tokens, exc.completion_tokens)
+        await asyncio.sleep(delay_s)
+        return {
+            "judge_query_log_id": await log_judge_call(pool, tenant_id, judge_llm, cut, llm_ms, "truncated"),
+            "judge_error": str(exc),
+            "judge_raw": exc.text,
+        }
     llm_ms = round((time.perf_counter() - started) * 1000)
     await asyncio.sleep(delay_s)
     out: dict[str, Any] = {
@@ -330,6 +353,14 @@ async def evaluate_item(
         "/v1/query", json={"question": item["question"]}, headers={"Authorization": f"Bearer {token}"}
     )
     await asyncio.sleep(delay_s)
+    if response.status_code == 502 and response.json().get("error") == "llm_truncated":
+        # Neither answered nor refused: recorded as its own outcome, never judged.
+        async with pool.acquire() as conn:
+            record["query_log_id"] = await conn.fetchval(
+                "SELECT max(id) FROM query_log WHERE tenant_id = $1", tenant_id
+            )
+        record.update(truncated=True, refused=False, answer=None, citations=[])
+        return record
     if response.status_code != 200:
         raise HarnessStopped(
             f"{item['id']}: /v1/query returned {response.status_code}: {response.text[:300]}"
@@ -497,11 +528,12 @@ def write_baseline_section(label: str, result: dict[str, Any], baseline_file: Pa
     ]
     for key, title in (
         ("correct_refusal_unanswerable", "Refused unanswerable (hallucination guard)"),
-        ("false_refusal_answerable", "Refused answerable (false refusals)"),
+        ("false_refusal_answerable", "Refused answerable (false refusals; truncations excluded)"),
+        ("truncated_generations", "Truncated at the completion limit (neither answered nor refused)"),
         ("faithful", "Faithful (judge, answered items)"),
         ("relevant", "Relevant (judge, answered items)"),
         ("citations_supported", "Citations supported (judge-v2, answered items)"),
-        ("correct_answerable", "Correct (judge; refusals count as not correct)"),
+        ("correct_answerable", "Correct (judge; refusals and truncations count as not correct)"),
         ("near_miss_pairs_both_correct", "Near-miss pairs with both answers correct"),
     ):
         v = g.get(key)
@@ -512,7 +544,8 @@ def write_baseline_section(label: str, result: dict[str, Any], baseline_file: Pa
         "",
         f"Judge errors: {g['judge_errors']}. "
         f"Hallucinated on unanswerable: {g['hallucinated_on_unanswerable'] or 'none'}. "
-        f"Refused answerable: {g['refused_answerable'] or 'none'}.",
+        f"Refused answerable: {g['refused_answerable'] or 'none'}. "
+        f"Truncated: {g.get('truncated_items') or 'none'}.",
         "",
     ]
     section = "\n".join(lines)

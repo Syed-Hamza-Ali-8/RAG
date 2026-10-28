@@ -1,4 +1,4 @@
-"""Writes query_log rows (migrations 005-008). Cache, routing and cost columns stay NULL until Phase 4.
+"""Writes query_log rows (migrations 005-009). Cache, routing and cost columns stay NULL until Phase 4.
 
 answer_raw holds LLM output, which may quote document content: it lives in the database
 only and is never written to application logs."""
@@ -25,6 +25,7 @@ class QueryLogEntry:
     citations_rejected: int | None
     prompt_version: str | None
     purpose: str = "query"  # 'query' | 'eval_judge' (migration 008)
+    outcome: str = ""  # 'answered' | 'refused' | 'truncated' (migration 009); "" derives it from refused
 
 
 async def write_query_log(conn: asyncpg.Connection, e: QueryLogEntry) -> int:
@@ -32,8 +33,9 @@ async def write_query_log(conn: asyncpg.Connection, e: QueryLogEntry) -> int:
         """
         INSERT INTO query_log (tenant_id, route_tier, model_used, prompt_tokens,
                                completion_tokens, retrieval_ms, llm_ms, total_ms, refused,
-                               answer_raw, citations_valid, citations_rejected, prompt_version, purpose)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                               answer_raw, citations_valid, citations_rejected, prompt_version, purpose,
+                               outcome)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         RETURNING id
         """,
         e.tenant_id,
@@ -50,5 +52,6 @@ async def write_query_log(conn: asyncpg.Connection, e: QueryLogEntry) -> int:
         e.citations_rejected,
         e.prompt_version,
         e.purpose,
+        e.outcome or ("refused" if e.refused else "answered"),
     )
     return log_id

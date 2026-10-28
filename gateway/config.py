@@ -63,7 +63,11 @@ class Settings(BaseSettings):
     llm_max_attempts: int = 5
     llm_backoff_base_s: float = 1.0
     llm_backoff_max_s: float = 30.0
-    llm_max_completion_tokens: int = 700
+    # Network failures (connection errors, timeouts) retry on their own, wider schedule.
+    llm_network_max_attempts: int = 8
+    llm_network_backoff_base_s: float = 2.0
+    llm_network_backoff_max_s: float = 30.0
+    llm_max_completion_tokens: int = 1000
     llm_temperature: float = 0.0
 
     # Eval / benchmark pacing to stay under free-tier rate limits (spec §6.2)

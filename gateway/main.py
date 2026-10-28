@@ -20,6 +20,7 @@ from gateway.errors import (
     LLMUnavailable,
     RateLimitExhausted,
     TenantNotFound,
+    TruncatedCompletion,
 )
 from gateway.ingest.embedder import Embedder
 from gateway.llm.provider import LLM, OpenAICompatibleLLM
@@ -86,6 +87,12 @@ def create_app(
     @app.exception_handler(DuplicateUser)
     async def _duplicate_user(_: Request, exc: DuplicateUser) -> JSONResponse:
         return JSONResponse(status_code=409, content={"error": "duplicate_user"})
+
+    @app.exception_handler(TruncatedCompletion)
+    async def _truncated(_: Request, exc: TruncatedCompletion) -> JSONResponse:
+        # Not a refusal and not an answer: its own error, so no client can read it as "no information".
+        log.error("LLM completion truncated: %s", exc)  # never the partial text: it may quote documents
+        return JSONResponse(status_code=502, content={"error": "llm_truncated"})
 
     @app.exception_handler(TenantNotFound)
     async def _tenant_not_found(_: Request, exc: TenantNotFound) -> JSONResponse:

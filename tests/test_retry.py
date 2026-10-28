@@ -58,7 +58,20 @@ async def run(script: Script, sleeps: list[float], attempts: int = 3) -> object:
     async def fake_sleep(s: float) -> None:
         sleeps.append(s)
 
-    return await with_retry(script, max_attempts=attempts, base_delay_s=1, max_delay_s=30, sleep=fake_sleep)
+    return await with_retry(
+        script,
+        max_attempts=attempts,
+        base_delay_s=1,
+        max_delay_s=30,
+        network_max_attempts=8,
+        network_base_delay_s=2,
+        network_max_delay_s=30,
+        sleep=fake_sleep,
+    )
+
+
+def connection_error() -> Exception:
+    return openai.APIConnectionError(request=_REQ)
 
 
 async def test_retries_429_then_succeeds(sleeps: list[float]) -> None:
@@ -147,3 +160,41 @@ async def test_each_429_retry_logs_the_provider_message(
     (record,) = caplog.records
     assert "tokens per minute (TPM)" in record.getMessage()
     assert "x-ratelimit-remaining-tokens=900" in record.getMessage()
+
+
+async def test_network_blip_rides_out_on_its_own_wider_budget(sleeps: list[float]) -> None:
+    # Seven connection failures (more than the 3 provider attempts) and the call still succeeds.
+    script = Script(*[connection_error()] * 7, "ok")
+    assert await run(script, sleeps) == "ok"
+    assert len(sleeps) == 7
+    # 2 s doubling to a 30 s cap, jittered x0.5-1.5: well over the ~10 s blip that stopped Phase 3.
+    assert sum(sleeps) >= 0.5 * (2 + 4 + 8 + 16 + 30 + 30 + 30)
+    assert all(s <= 30 for s in sleeps)
+
+
+async def test_network_budget_exhausted_raises_unavailable(sleeps: list[float]) -> None:
+    script = Script(*[openai.APITimeoutError(request=_REQ)] * 8)
+    with pytest.raises(LLMUnavailable, match="APITimeoutError after 8 attempts"):
+        await run(script, sleeps)
+    assert script.calls == 8
+
+
+async def test_rate_limits_and_network_failures_do_not_share_a_budget(sleeps: list[float]) -> None:
+    # Two 429s (one short of the provider budget of 3) interleaved with connection errors: no failure
+    # of one kind counts against the other, so the call succeeds.
+    script = Script(
+        status_error(openai.RateLimitError, 429),
+        connection_error(),
+        connection_error(),
+        status_error(openai.RateLimitError, 429),
+        connection_error(),
+        "ok",
+    )
+    assert await run(script, sleeps) == "ok"
+    # A third 429 still exhausts the provider budget, however many network retries remain.
+    script = Script(
+        *[status_error(openai.RateLimitError, 429), connection_error()] * 2,
+        status_error(openai.RateLimitError, 429),
+    )
+    with pytest.raises(RateLimitExhausted):
+        await run(script, sleeps)
