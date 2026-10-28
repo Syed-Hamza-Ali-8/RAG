@@ -294,6 +294,34 @@ enters the top 6.
   doubling to a 30 s cap (about two minutes of waiting), separate from the 429/5xx budget, so the 10 s
   blips that stopped the baseline and the calibration on 2026-10-26 no longer stop a run.
 
+## A correct answer that should never have been possible (q052)
+
+q052 asks, as `finance@acme.example`: "Who is the business owner of the vendor that hosts Atlas, and
+what is that person's role at Acme?" In the Phase 2 baseline it was answered, cited and judged correct:
+"Mei Lin Zhou ... is Acme's Chief Technology Officer." One of the two citations was
+`eng-platform-architecture#0`, a chunk restricted to the engineering role. A finance user may not read
+it. Phase 2 retrieval had no ACL filter, so the chunk reached the model, the model used it, and every
+check passed. Nobody noticed.
+
+Phase 3 put the ACL predicate in the SQL. The engineering chunk is no longer retrieved for this user.
+The only chunk the user may read that holds her role, `public-company-overview#0`, ranks 7th, outside
+the six sources, so the model names the business owner, cannot state her role, and refuses. Re-run
+alone at the corrected completion limit (1000 tokens), it completes and refuses again. The honest
+consequence of closing the leak is one fewer answered question.
+
+It was not the only leak. Checking every Phase 2 citation against its item's user with the same rule the
+isolation suite uses: **11 Phase 2 answers cited at least one chunk their user may not read (10 judged
+correct), and 187 restricted chunks were among the six sources the model saw across the 100 items.**
+In Phase 3 both counts are **0**. For ten of the eleven (q003, q013, q016, q026, q037, q053, q054, q057,
+q075, q091) the same fact also exists in a chunk the user may read, and Phase 3 answers them correctly
+from those; q052 is the one whose answer existed only through the leak at the depth the model sees.
+
+This is a better illustration of what Gateway is for than any adversarial probe, because it was not
+constructed: the golden set was written to measure answer quality, every gold chunk is readable by its
+user, and the leak was found in the answers, not planted in the questions. Without permission-aware
+retrieval, an assistant over a firm's documents can be right for a reason the asker was never allowed to
+see, and a quality metric will score it as a success.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
