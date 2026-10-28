@@ -22,6 +22,7 @@ PASS CRITERIA (fixed before any cache code; applied by tests/test_cache_isolatio
 - C6 non-vacuity: every `expected: hit` control is served from the cache, so a suite that never hits fails.
 - C7 audit on a hit (correction O): served_from_cache = true and retrieved_ids = the cached citations'
   chunk ids, never empty.
+- C8 only answered outcomes are stored: after a refused (or truncated) request no cache row exists for it.
 expected = miss: `ask` is not served from the populate request's entry; expected = hit: it is.
 
 LIVENESS (checked here, and re-proved by mutation in the test suite):
@@ -52,7 +53,16 @@ PROBES_FILE = EVAL_DIR / "adversarial_cache.jsonl"
 REVIEW = EVAL_DIR / "adversarial_cache_review.md"
 GOLDEN = EVAL_DIR / "golden_set.jsonl"
 TENANTS = EVAL_DIR.parent / "corpus" / "tenants.json"
-CATEGORIES = ("cross_role", "cross_clearance", "cross_tenant", "near_miss", "stale", "bypass", "control")
+CATEGORIES = (
+    "cross_role",
+    "cross_clearance",
+    "cross_tenant",
+    "near_miss",
+    "stale",
+    "bypass",
+    "control",
+    "non_cacheable",
+)
 SWEEP_LOW = 0.88
 
 
@@ -93,7 +103,7 @@ def check_probe(
     same_tenant = p["populate"]["tenant"] == p["ask"]["tenant"]
     q_pop, q_ask = questions(p)
 
-    if cat in ("cross_role", "cross_clearance", "cross_tenant", "stale", "bypass") or (
+    if cat in ("cross_role", "cross_clearance", "cross_tenant", "stale", "bypass", "non_cacheable") or (
         cat == "control" and twin
     ):
         if q_pop != q_ask:
@@ -110,7 +120,7 @@ def check_probe(
             errors.append(f"{pid}: cross_role needs different roles")
     if cat == "cross_tenant" and (same_tenant or sig["populate"] != sig["ask"]):
         errors.append(f"{pid}: cross_tenant needs two tenants and the SAME role signature")
-    if cat in ("stale", "bypass") or (cat == "control" and not twin):
+    if cat in ("stale", "bypass", "non_cacheable") or (cat == "control" and not twin):
         if p["populate"] != p["ask"] and not (cat == "control" and q_pop.lower().strip("?") == q_ask.lower()):
             errors.append(f"{pid}: {cat} probes are asked twice by the same user")
     if twin and sig["populate"] != sig["ask"]:
@@ -125,6 +135,7 @@ def check_probe(
     # setup), absent from the question.
     ask_roles = [r for r in sides["ask"]["roles"] if r not in setup.get("revoke_roles", [])]
     tighten = setup.get("tighten_document")
+    changed = setup.get("reingest_changed_text")
     for s in p["forbidden_strings"]:
         low = s.lower()
         if low in q_ask.lower():
@@ -144,6 +155,8 @@ def check_probe(
                     "allowed_roles": tighten["allowed_roles"],
                     "min_clearance": tighten["min_clearance"],
                 }
+            if changed and c["tenant"] == p["ask"]["tenant"] and c["gid"].split("#")[0] == changed["slug"]:
+                c = {**c, "content": c["content"].replace(*changed["replace"])}
             if low in c["content"].lower() and permitted(
                 c, p["ask"]["tenant"], ask_roles, sides["ask"]["clearance"]
             ):

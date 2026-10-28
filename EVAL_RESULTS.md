@@ -322,6 +322,43 @@ user, and the leak was found in the answers, not planted in the questions. Witho
 retrieval, an assistant over a firm's documents can be right for a reason the asker was never allowed to
 see, and a quality metric will score it as a success.
 
+## Phase 4 semantic cache: pre-registered finding (fixed 2026-10-28, before any cache code)
+
+**Pure embedding similarity cannot safely gate a cache on this corpus.** Measured with the production
+embedder (`BAAI/bge-small-en-v1.5`), cosine between the two questions of each golden near-miss pair:
+
+| Pair | Questions | Cosine |
+|---|---|---|
+| nm4 | maternity leave / paternity leave | 0.9124 |
+| nm1 | per diem in the UAE / in the United Kingdom | 0.9145 |
+| nm3 | minimum salary, Manager (C1) / Senior Manager (C2) | 0.9216 |
+| nm5 | expense claim of USD 2,000 / USD 5,000 | 0.9540 |
+| nm2 | Service Credit below 99.9% but at least 99.0% / below 99.0% | **0.9948** |
+
+The golden set's only real paraphrase (q101, a rewording of q022) sits at **0.8190**. nm2 is above the
+whole planned sweep (0.88-0.99), so no threshold in it keeps nm2 apart, and any threshold that kept it
+apart (>0.9948) would also refuse every paraphrase.
+
+**Decision (user-approved): a content-word check on top of the threshold.** A cache hit additionally
+requires the same content words as the stored question (lowercased, punctuation and stopwords removed,
+numbers kept). It separates all five pairs, including nm4, which differs only in an ordinary word.
+
+**Consequences, stated before the results:**
+- The cache serves near-verbatim repeats (same content words in any case, punctuation or order), not
+  paraphrases. That caps the achievable hit rate; the gate's hit-rate measurement is a repeated-query
+  workload, and a low hit rate on paraphrased traffic is expected, not a defect.
+- The similarity threshold is no longer the safety mechanism. It is a second filter below the word
+  check. The sweep (0.88-0.99) still runs and its curve is recorded, but every point is measured **with
+  the word check on**, and the claim it supports is narrower: hit rate and faithfulness among questions
+  that already share their content words.
+- Only answered outcomes are stored; refusals and truncations never are (a cached refusal served to a
+  user with more access is a correctness bug). Entries expire after `CACHE_TTL_HOURS` (default 24).
+- The temporal/entity bypass list (today, yesterday, now, current, currently, latest, "as of", "to
+  date", this/last/next week/month/quarter/year, "for client …", "for customer …") has a cost: the number
+  of golden-set questions it excludes is reported with the implementation, not assumed.
+- Rejected: a bypass for every question containing a number or code (too blunt on a corpus of fees,
+  dates and limits) and a retrieved-chunk overlap check (near-miss pairs share their gold chunk).
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
