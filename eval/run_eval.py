@@ -806,6 +806,8 @@ def main() -> None:
     )
     args = parser.parse_args()
     require_stack(strict=True, force_containers=args.force_containers)
+    if args.resume:
+        args.resume = str(Path(args.resume).resolve())  # printed later relative to ROOT
     resumed = read_partial(Path(args.resume)) if args.resume else None
     sys.exit(asyncio.run(run(args, load_golden(), resumed, force_budget=args.force_budget)))
 
