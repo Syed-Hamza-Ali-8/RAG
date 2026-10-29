@@ -141,6 +141,16 @@ judge-v1 bad-citation items (c11–c15).
   connection failure stopped the run after 14 items; it resumed from the saved verdicts without
   re-judging them.
 
+**Field data point (2026-10-29, Phase 4 cache sweep): the judge contradicted itself on identical
+content.** q054's answer and sources were judged twice, once for the original question
+(`citations_supported` true) and once for its UPPERCASE variant (false: "S4 and S2 do not explicitly
+state the EUR 1,900 amount", a figure derived as 5% of EUR 38,000 and cited with stacked markers). Same
+answer, same sources, different verdict: a judge reliability fact, not a cache fault. Across the sweep's
+40 served answers `citations_supported` was 39/40, against 10/10 on the calibration set's good answers;
+calibration items were constructed to be clear-cut, and the real-world false-negative rate on this
+verdict is likely higher than calibration implied. Derived figures and stacked citations are where it
+showed.
+
 ## Golden set — Phase 3 re-baseline: pre-registered expectations (fixed 2026-10-24, before the run)
 
 From Phase 3 the harness retrieves each golden item as its seeded `as_user`, through the SQL ACL
@@ -416,7 +426,7 @@ reported beside it), and each distinct served (question, answer) pair is judged 
 - One more measured fact: q074's paraphrase ("…at present…") escapes the bypass list, which is lexical.
   It cannot hit (different content words), but the list does not catch every temporal phrasing.
 
-## Phase 4 cache threshold sweep: results (2026-10-29; no threshold chosen yet)
+## Phase 4 cache threshold sweep: results (2026-10-29)
 
 Run by `eval/cache_sweep.py` (`--record`, `--sweep`, `--judge`, `--report`); artifacts in
 `eval/cache_sweep/` (recording, sweep, verdicts). Recording: 25 real generations (`openai/gpt-oss-20b`,
@@ -461,6 +471,13 @@ the ceiling for every hit rate below.
   prediction listed q074 only under exact repeats.
 - **Held: no drop in served-answer quality at low thresholds** (faithful and correct 100% at all nine).
 - **Held: q074's paraphrase ("at present") escapes the bypass list** and still cannot hit.
+
+**Chosen threshold: 0.95 (user decision, 2026-10-29). It is not a tuned optimum.** The curve is flat from
+0.88 to 0.97, identical hit rates and identical safety, because the content-word check decides every hit
+before the threshold applies. 0.95 is the midpoint of that flat region: enough margin above 0.88 that a
+corpus or embedding-model change does not immediately put the threshold in play, and below 0.973, where
+legitimate variants start being lost. **The threshold alone is not a safety mechanism:** if the word check
+were ever removed, no value in the swept range would keep nm2 (0.9948) apart.
 
 **A tooling bug, caught before it cost anything.** The first `--judge` attempt counted 537 distinct served
 answers instead of 40: each run record merged the `query_log` row, whose `id` column overwrote the item id.

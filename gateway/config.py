@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     # Semantic cache (spec 4.2; EVAL_RESULTS.md Phase 4 finding). A hit needs the same tenant, role
     # signature and content words; the cosine threshold is a second filter below the word check.
     cache_enabled: bool = True
+    # Midpoint of the sweep's flat region (0.88-0.97); the word check, not this, keeps near-misses apart.
     cache_similarity_threshold: float = 0.95
     cache_ttl_hours: int = 24
     # Questions matching any pattern (case-insensitive regex) are neither served from nor stored in the cache.
