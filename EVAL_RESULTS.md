@@ -416,6 +416,58 @@ reported beside it), and each distinct served (question, answer) pair is judged 
 - One more measured fact: q074's paraphrase ("…at present…") escapes the bypass list, which is lexical.
   It cannot hit (different content words), but the list does not catch every temporal phrasing.
 
+## Phase 4 cache threshold sweep: results (2026-10-29; no threshold chosen yet)
+
+Run by `eval/cache_sweep.py` (`--record`, `--sweep`, `--judge`, `--report`); artifacts in
+`eval/cache_sweep/` (recording, sweep, verdicts). Recording: 25 real generations (`openai/gpt-oss-20b`,
+answer-v2), **21 answered and 4 refused** (q079, q083, q088 unanswerable; q052, as in Phase 3). Refused
+items are never stored; q074 is bypassed ("current"). So **20 of 25 items are cacheable**, and 20/25 is
+the ceiling for every hit rate below.
+
+| Threshold | Exact | Variant | Paraphrase | Re-run | Served: faithful / correct | p50 hit | p50 miss (excl. model) | Lookup p50, cold | Wrong-item hits | Isolation suite |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0.88 | 20/25 | 20/25 | 0/25 | 20/25 | 60/60 / 60/60 | 26 ms | 27 ms | 1 ms | 0 | 98/98 |
+| 0.90 | 20/25 | 20/25 | 0/25 | 20/25 | 60/60 / 60/60 | 23 ms | 27 ms | 1 ms | 0 | 98/98 |
+| 0.92 | 20/25 | 20/25 | 0/25 | 20/25 | 60/60 / 60/60 | 24.5 ms | 28 ms | 1 ms | 0 | 98/98 |
+| 0.94 | 20/25 | 20/25 | 0/25 | 20/25 | 60/60 / 60/60 | 25 ms | 29 ms | 1 ms | 0 | 98/98 |
+| 0.95 | 20/25 | 20/25 | 0/25 | 20/25 | 60/60 / 60/60 | 27 ms | 34 ms | 1 ms | 0 | 98/98 |
+| 0.96 | 20/25 | 20/25 | 0/25 | 20/25 | 60/60 / 60/60 | 24 ms | 28 ms | 1 ms | 0 | 98/98 |
+| 0.97 | 20/25 | 20/25 | 0/25 | 20/25 | 60/60 / 60/60 | 25 ms | 27 ms | 1 ms | 0 | 98/98 |
+| 0.98 | 20/25 | **19/25** | 0/25 | 20/25 | 59/59 / 59/59 | 25 ms | 26.5 ms | 1 ms | 0 | 98/98 |
+| 0.99 | 20/25 | **18/25** | 0/25 | 20/25 | 58/58 / 58/58 | 24.5 ms | 28 ms | 1 ms | 0 | 98/98 |
+
+- **Every threshold passes the hard gate**: the full isolation suite (all five near-miss pairs included)
+  and no hit serving another item's answer.
+- **The curve is flat from 0.88 to 0.97.** The content-word check decides every hit before the threshold
+  applies; the threshold only starts to bind above the lowest variant cosine (0.973), costing one variant
+  at 0.98 (q100) and two at 0.99 (q100, q107).
+- **Served answers: 40 distinct (question, answer) pairs judged once each (judge-v2): faithful 40/40,
+  relevant 40/40, correct 40/40, citations supported 39/40.** The one exception is q054's UPPERCASE variant,
+  served the same answer and sources as q054's original question, which the judge passed: a judge
+  disagreement on identical content (a derived figure, 5% of EUR 38,000, cited with stacked markers),
+  not a cache effect.
+- **Latency.** Real model p50 1,106 ms (recording). A hit returns in 23-27 ms p50; a miss costs about
+  27 ms plus the model. The lookup itself on the miss path: p50 1 ms, p95 3 ms, max 21 ms (216 cold
+  lookups). Retrieval p50 25 ms with the cache off vs 31 ms with it on: within this machine's documented
+  noise, and the direct lookup timing is the number to trust.
+
+**Pre-registered predictions:**
+- **Held: paraphrase hit rate 0/25 at every threshold.** The measured cost of the word check.
+- **Held: exact repeats and re-runs hit every item the model answered, minus q074** (21 − 1 = 20).
+- **Held where testable: variant misses.** All cacheable variants hit up to 0.97; q100 misses at 0.98;
+  q100 and q107 miss at 0.99, as named. **Untestable:** q052 and q088, also named for 0.99, were refused
+  when recorded, so they were never stored and their variants could not hit at any threshold. **Missed in
+  the prediction:** q074's variant also contains "current", so it is bypassed at every threshold; the
+  prediction listed q074 only under exact repeats.
+- **Held: no drop in served-answer quality at low thresholds** (faithful and correct 100% at all nine).
+- **Held: q074's paraphrase ("at present") escapes the bypass list** and still cannot hit.
+
+**A tooling bug, caught before it cost anything.** The first `--judge` attempt counted 537 distinct served
+answers instead of 40: each run record merged the `query_log` row, whose `id` column overwrote the item id.
+The judge pre-flight refused (1.5M tokens needed), so no tokens were spent. Fixed (`query_log_id`); the
+sweep file was repaired by plan position with every run's kind, question and type verified (1,125 runs),
+so the sweep did not need to be re-run. The per-hit wrong-item assertion used the real item id throughout.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the

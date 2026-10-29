@@ -122,7 +122,8 @@ async def _ask(
         raise HarnessStopped(f"{item['id']}: /v1/query {r.status_code}: {r.text[:200]}")
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT q.id, q.cache_hit, q.cache_lookup_ms, q.retrieval_ms, q.llm_ms, q.total_ms, q.outcome, "
+            "SELECT q.id AS query_log_id, q.cache_hit, q.cache_lookup_ms, q.retrieval_ms, q.llm_ms, "
+            "q.total_ms, q.outcome, "
             "q.answer_raw, q.model_used, a.served_from_cache FROM query_log q "
             "JOIN audit_log a ON a.query_log_id = q.id WHERE q.tenant_id = $1 ORDER BY q.id DESC LIMIT 1",
             auth.tenant_id,
