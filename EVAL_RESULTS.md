@@ -485,6 +485,74 @@ The judge pre-flight refused (1.5M tokens needed), so no tokens were spent. Fixe
 sweep file was repaired by plan position with every run's kind, question and type verified (1,125 runs),
 so the sweep did not need to be re-run. The per-hit wrong-item assertion used the real item id throughout.
 
+## Phase 4 routing: design, criteria and predictions (fixed 2026-10-29, before any routing code or measurement)
+
+**What routing can win on this corpus, from existing data.** The small model (`openai/gpt-oss-20b`) is
+correct on 24 of the 25 subset items in the Phase 3 baseline (judge-v2). The one failure, q052, is a
+retrieval miss (its second hop ranks 7th, outside the six sources). On the full golden set it fails 8 of
+100: seven retrieval misses (q051, q052, q058, q064, q066, q106 refused with a hop outside the top 6;
+q029 answered with a neighbouring date, gold chunk at rank 9) and q109 (judge-v2's stricter reading of an
+omitted qualifier). A larger generator sees the same six chunks.
+
+**Classifier** (spec task 5: cheap heuristics first). A score in [0, 1], a weighted sum of features each
+scaled to [0, 1]. Weights are fixed here by judgement, not fitted to outcomes, so 25 items cannot overfit
+them:
+
+| Feature | Value | Weight |
+|---|---|---|
+| Multiple questions ("…, and what/how/which/when/who/where…") | 1 if present | 0.25 |
+| Clause count (commas, and/or/if/which/that/while/whereas) | min(n / 3, 1) | 0.15 |
+| Entity count (capitalised words not first in the question, numbers) | min(n / 4, 1) | 0.15 |
+| Question length | min(words / 30, 1) | 0.10 |
+| Comparative/superlative terms (more, less, most, least, higher, lower, than, versus, compare, difference, …) | 1 if present | 0.10 |
+| Temporal markers (before, after, during, since, until, by the end, deadline, month, quarter, year, 20xx) | 1 if present | 0.05 |
+| Low retrieval confidence | 1 − top-1 cosine | 0.10 |
+| Flat retrieval scores | 1 − min((top-1 − top-6) / 0.2, 1) | 0.10 |
+
+**Policy** (spec task 6). Score ≥ `ROUTING_THRESHOLD` → large tier, else small. Both tiers come from `.env`
+(both Groq); the router picks between configured tiers and never falls back from one to the other.
+
+**Measurement** (cache off; record-and-replay as in the cache sweep):
+- Subset (25 items): small answers = the 25 recorded on 2026-10-29 for the cache sweep (answer-v2, cache
+  off); large answers = 25 new recordings on the large tier with the same retrieval. Judge-v2 for every
+  answer not already judged.
+- Supplement: the seven other Phase 3 small-model failures (q029, q051, q058, q064, q066, q106, q109),
+  recorded on both tiers and judged. It exists because the subset holds a single failure, so on its own
+  it cannot show an item where the large model helps even if one exists. Reported separately.
+- Routing is replayed at thresholds 0.0 (always large), 0.1 … 0.9 and 1.01 (always small): each item's
+  outcome is the chosen tier's judged answer, and its cost is that answer's tokens at that tier's price.
+
+**Labels.** An item is *ok* on a tier if its answer is judged correct, or if it is unanswerable and refused.
+*Needs large*: not ok on small, ok on large. *Small better*: ok on small, not ok on large.
+
+**Reported per threshold:** share routed to large, correctness, faithfulness on answered items,
+refusals, shadow cost, LLM latency p50 (recorded), and how many *needs large* items it catches.
+
+**Shadow cost** (spec task 7): `query_log.est_cost_usd` = prompt tokens × input price + completion tokens ×
+output price of the tier used, with prices from `.env`. Groq list prices per 1M tokens (console.groq.com/
+docs/models, read 2026-10-29): gpt-oss-20b USD 0.075 in / 0.30 out; gpt-oss-120b USD 0.15 in / 0.60 out.
+No price set → NULL, never a guessed number. Cache hits cost 0.
+
+**Acceptable delta** (for the gate's "faithfulness with routing vs always-large"): on the subset, routed
+correctness and faithfulness within 1 item (4 points) of always-large; on the full gate run, within 3 points.
+
+**"Underperform", which would justify an LLM classifier:** the *needs large* set is non-empty AND no
+threshold that routes at most half of the traffic to the large tier catches at least half of those items
+while staying within the acceptable delta. If *needs large* is empty, the heuristics cannot underperform
+on this data, and an LLM classifier is not justified by it.
+
+**Predictions:**
+- *Needs large* on the subset: **0 items.** q052 also fails on the large tier (the role is not in its six
+  chunks); always-large and always-small correctness are within 1 item.
+- The large tier costs twice as much per token and, as a reasoning model, likely spends more completion
+  tokens, so every threshold that routes anything to it costs more for no measurable quality gain.
+  Always-small meets the acceptable delta at the lowest cost.
+- Supplement: the six retrieval-limited refusals stay refused on the large tier. q029 and q109 are the only
+  plausible *needs large* items (or *small better*: the large tier may refuse q029 rather than give the
+  wrong date, which is not "correct" either).
+- Sanity check of the features, independent of outcomes: multi-hop questions score higher on average than
+  single-hop ones.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
