@@ -129,7 +129,8 @@ async def record(settings: Settings) -> int:
                         json={"question": item["question"]},
                         headers={"Authorization": f"Bearer {token}"},
                     )
-                    if r.status_code != 200:
+                    truncated = r.status_code == 502 and r.json().get("error") == "llm_truncated"
+                    if r.status_code != 200 and not truncated:
                         print(f"STOPPED: {item['id']} {tier}: {r.status_code} {r.text[:200]}")
                         await llm.aclose()
                         return 2
@@ -140,7 +141,8 @@ async def record(settings: Settings) -> int:
                             "FROM query_log WHERE tenant_id = $1 ORDER BY id DESC LIMIT 1",
                             auth.tenant_id,
                         )
-                    body = r.json()
+                    # A truncation is its own recorded outcome (query_log.outcome), counted as not ok.
+                    body = {"answer": None} if truncated else r.json()
                     append(
                         RECORDING,
                         {
@@ -180,11 +182,16 @@ async def _import_cached_small(
         async with pool.acquire() as conn:
             auth, hits = await _retrieval(app, conn, item, settings.retrieval_top_k)
             rows = await conn.fetch(
-                "SELECT outcome, answer_raw, prompt_tokens, completion_tokens, llm_ms, model_used "
-                "FROM query_log "
-                "WHERE tenant_id = $1 AND purpose = 'query' AND answer_raw = $2 "
-                "AND ts BETWEEN '2026-10-29 11:00+00' AND '2026-10-29 11:30+00' AND cache_hit IS NULL",
+                # Keyed on the question (audit_log.query_text): refusals share their answer text. The real
+                # generation carries token counts; the cache sweep's replayed rows do not.
+                "SELECT q.outcome, q.answer_raw, q.prompt_tokens, q.completion_tokens, q.llm_ms, "
+                "q.model_used "
+                "FROM query_log q JOIN audit_log a ON a.query_log_id = q.id "
+                "WHERE q.tenant_id = $1 AND q.purpose = 'query' AND a.query_text = $2 AND q.answer_raw = $3 "
+                "AND q.ts BETWEEN '2026-10-29 11:00+00' AND '2026-10-29 11:30+00' AND q.cache_hit IS NULL "
+                "AND q.prompt_tokens IS NOT NULL",
                 auth.tenant_id,
+                item["question"],
                 rec["answer_raw"],
             )
         if len(rows) != 1:
