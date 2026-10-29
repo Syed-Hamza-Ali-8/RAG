@@ -553,6 +553,67 @@ on this data, and an LLM classifier is not justified by it.
 - Sanity check of the features, independent of outcomes: multi-hop questions score higher on average than
   single-hop ones.
 
+## Phase 4 routing: results so far (2026-10-29; judging pending)
+
+Recorded by `eval/routing_sweep.py --record` (64 answers: 25 subset + 7 supplement items, both tiers, cache
+off; `eval/routing_sweep/recording.jsonl`). Judging was refused by its budget pre-flight (judge model at
+191,267 of 200,000 tokens); it runs after the window frees. Everything below is decided by recorded
+outcomes alone.
+
+**Decided without the judge:**
+- **Subset: *needs large* = 0 items** (prediction held). The small tier fails only q052, and the large tier
+  refuses it too: the role it needs is not among the six chunks either model sees. q079, q083, q088
+  (unanswerable) are refused by both tiers.
+- **Supplement:** q058, q064, q066, q106 are refused by both tiers (prediction held: retrieval-limited stays
+  refused). Open until judged: q051 (small truncated at 1,000 tokens, large answered), q029 and q109 (both
+  tiers answered).
+- **Possible regression:** q074 is answered by the small tier and refused by the large tier.
+
+**Routing curve, subset (25 items).** Shares and costs from the recording; correctness pending.
+
+| Threshold | Sent to large | Shadow cost (USD) | LLM p50 |
+|---|---|---|---|
+| 0.0-0.1 (always large) | 25/25 | 0.010696 | 1,133 ms |
+| 0.2 | 17/25 | 0.009342 | 1,183 ms |
+| 0.3 | 8/25 | 0.007462 | 1,150 ms |
+| 0.4 | 6/25 | 0.006936 | 1,174 ms |
+| 0.5 | 5/25 | 0.006718 | 1,150 ms |
+| 0.6 | 4/25 | 0.006474 | 1,150 ms |
+| 0.7 | 2/25 | 0.006006 | 1,150 ms |
+| 0.8+ (always small) | 0/25 | 0.005503 | 1,106 ms |
+
+Always-large costs **1.94×** always-small; latency is a wash.
+
+**Missed prediction, recorded as visibly as the hits:** I predicted the large tier, as a reasoning model,
+would spend *more* completion tokens. It spent **fewer**: median 119 against the small tier's 135 on the
+subset (264 against 380 on the supplement). The cost ratio still lands near the 2× price ratio because the
+prompt (median ~2,370 tokens, identical on both tiers) dominates cost either way.
+
+**Underperform verdict, committed for every branch before the judge runs.** The pre-registered test: *needs
+large* is non-empty and no threshold sending at most half the traffic catches at least half of it. Complexity
+scores: q051 0.6175 (multi-hop); q029 0.2717 and q109 0.2511 (single-hop, typical of easy questions).
+
+| *Needs large* turns out to be | Verdict |
+|---|---|
+| empty, or {q051} | not underperform: thresholds 0.3-0.6 catch q051 sending ≤ 25% of the 32 items to large |
+| {q051, q029} or {q051, q109} | not underperform: catching q051 alone is half |
+| {q051, q029, q109}, {q029}, {q109} or {q029, q109} | underperform: catching q029/q109 needs threshold 0.2, sending 75% to large |
+
+**Claim to ship once judged** (user-approved shape; N filled in from the judging):
+
+> **Complexity routing: built and measured; on this corpus it adds cost, not quality.** The heuristic
+> classifier separates question complexity well (multi-hop questions average 0.66, single-hop 0.22), but
+> answer quality here is bounded by retrieval, not by the generator. On the 25-item subset the small model
+> fails one question and the large model fails it too, because the fact it needs is not in the six chunks
+> either model sees. Sending any share of traffic to the large model raised shadow cost by up to 1.94× with
+> no measured quality gain on the subset, and at most N items gained among seven known small-model failures.
+> **The router is built, tested and configurable; it is disabled by default because the measurement showed
+> it costs money without improving answers on this corpus.** Revisit after Phase 5: hybrid retrieval changes
+> what reaches the generator, and only then could a larger model have something to fix.
+>
+> The transferable lesson: a complexity router only pays off when the generator is the bottleneck. Measure
+> which stage is binding before building one.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
