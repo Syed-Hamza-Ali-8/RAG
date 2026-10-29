@@ -22,4 +22,7 @@ async def query(
         question=body.question,
         top_k=body.top_k or state.settings.retrieval_top_k,
         cache=state.cache,
+        router=state.router,
+        llms=state.llms,
+        prices=state.prices,
     )

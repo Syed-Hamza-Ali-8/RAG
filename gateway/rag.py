@@ -4,6 +4,8 @@ Permissions come from the AuthContext, resolved from the database per request.""
 
 import logging
 import time
+from collections.abc import Mapping
+from decimal import Decimal
 from uuid import UUID
 
 import asyncpg
@@ -18,6 +20,8 @@ from gateway.llm.provider import LLM
 from gateway.models.query import Citation, QueryResponse, Timings
 from gateway.query_log import QueryLogEntry, write_query_log
 from gateway.retrieval.vector import denied_count, readable_count, vector_search
+from gateway.routing.classifier import complexity
+from gateway.routing.policy import Price, Router, shadow_cost
 from gateway.security.audit import AuditEntry, write_audit
 from gateway.security.guardrails import check_citations
 
@@ -91,6 +95,7 @@ async def _serve_cached(
                 prompt_version=None,
                 outcome="answered",
                 cache_hit=True,
+                est_cost_usd=Decimal(0),
                 cache_lookup_ms=lookup_ms,
             ),
         )
@@ -131,7 +136,12 @@ async def answer_query(
     question: str,
     top_k: int,
     cache: CacheConfig | None = None,
+    router: Router | None = None,
+    llms: Mapping[str, LLM] | None = None,
+    prices: Mapping[str, Price | None] | None = None,
 ) -> QueryResponse:
+    """`llm` answers every query unless `router` is set; then each query goes to `llms[tier]` for the tier
+    its complexity score selects. `prices` (per tier) give the shadow cost; a missing price → unknown."""
     started = time.perf_counter()
     acl_filter = auth.acl()
     use_cache = cache is not None and not cache.bypassed(question)
@@ -158,13 +168,19 @@ async def answer_query(
     answer = REFUSAL_MESSAGE
     citations: list[Citation] = []
     truncated: TruncatedCompletion | None = None
+    score: float | None = None
+    generator = llm
+    if router is not None and chunks:
+        assert llms is not None
+        score = complexity(question, [c.score for c in chunks]).score
+        generator = llms[router.route(score)]
 
     # Nothing permitted retrieved → refuse without an LLM call. This branch depends only on what the
     # caller may read, never on what was denied, so it reveals nothing about restricted documents.
     if chunks:
         llm_started = time.perf_counter()
         try:
-            completion = await llm.complete(build_messages(question, chunks))
+            completion = await generator.complete(build_messages(question, chunks))
         except TruncatedCompletion as exc:
             truncated = exc
         llm_ms = _ms(llm_started)
@@ -196,6 +212,12 @@ async def answer_query(
             ]
 
     refused = truncated is None and not citations
+    # No chunks means no LLM call: the cost is zero, not unknown.
+    cost = (
+        shadow_cost((prices or {}).get(generator.tier), prompt_tokens, completion_tokens)
+        if chunks
+        else Decimal(0)
+    )
     outcome = "truncated" if truncated is not None else ("refused" if refused else "answered")
     total_ms = _ms(started)
     async with pool.acquire() as conn:
@@ -203,7 +225,7 @@ async def answer_query(
             conn,
             QueryLogEntry(
                 tenant_id=auth.tenant_id,
-                route_tier=llm.tier,
+                route_tier=generator.tier,
                 model_used=model,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
@@ -218,6 +240,8 @@ async def answer_query(
                 outcome=outcome,
                 cache_hit=False if use_cache else None,
                 cache_lookup_ms=lookup_ms,
+                complexity_score=score,
+                est_cost_usd=cost,
             ),
         )
         if use_cache and outcome == "answered" and model is not None:
@@ -257,7 +281,7 @@ async def answer_query(
         refused=refused,
         citations=citations,
         model=model,
-        tier=llm.tier,
+        tier=generator.tier,
         prompt_version=PROMPT_VERSION,
         timings=Timings(retrieval_ms=retrieval_ms, llm_ms=llm_ms, total_ms=total_ms),
     )

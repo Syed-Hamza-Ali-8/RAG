@@ -126,6 +126,7 @@ async def test_answer_has_citation_with_title_and_ordinal(
     assert row["model_used"] == "stub-model"
     assert row["route_tier"] == "small"
     assert row["total_ms"] >= row["retrieval_ms"] >= 0
+    # Test settings: cache off, routing off, no prices configured, so all three are unknown (NULL).
     assert row["cache_hit"] is None and row["est_cost_usd"] is None and row["complexity_score"] is None
     assert row["answer_raw"] == "Answer [S1]."
     assert row["prompt_version"] == PROMPT_VERSION

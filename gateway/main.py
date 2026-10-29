@@ -25,20 +25,32 @@ from gateway.errors import (
 )
 from gateway.ingest.embedder import Embedder
 from gateway.llm.provider import LLM, OpenAICompatibleLLM
+from gateway.routing.policy import Router, price_for
 
 log = logging.getLogger(__name__)
 
 
 def create_app(
-    settings: Settings | None = None, *, llm: LLM | None = None, embedder: Embedder | None = None
+    settings: Settings | None = None,
+    *,
+    llm: LLM | None = None,
+    large_llm: LLM | None = None,
+    embedder: Embedder | None = None,
 ) -> FastAPI:
-    """`llm` and `embedder` let tests inject a stub LLM and one shared embedder (each Embedder holds
-    ~130 MB of ONNX weights); production builds both from .env."""
+    """`llm`, `large_llm` and `embedder` let tests inject stub LLMs and one shared embedder (each Embedder
+    holds ~130 MB of ONNX weights); production builds them from .env. With ROUTING_ENABLED both the small
+    and the large tier are built at startup, so a missing tier configuration fails fast."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         s = settings or get_settings()
-        built_llm = llm or OpenAICompatibleLLM(s, s.llm_tier)
+        injected = {x.tier: x for x in (llm, large_llm) if x is not None}
+        built_llm = injected.get(s.llm_tier) or llm or OpenAICompatibleLLM(s, s.llm_tier)
+        llms: dict[str, LLM] = {built_llm.tier: built_llm}
+        if s.routing_enabled:
+            for tier in ("small", "large"):
+                if tier not in llms:
+                    llms[tier] = injected.get(tier) or OpenAICompatibleLLM(s, tier)
         built_embedder: Embedder
         if embedder is not None:
             built_embedder = embedder
@@ -55,6 +67,9 @@ def create_app(
             app.state.pool = pool
             app.state.embedder = built_embedder
             app.state.llm = built_llm
+            app.state.llms = llms
+            app.state.router = Router(s.routing_threshold) if s.routing_enabled else None
+            app.state.prices = {tier: price_for(s, x.tier) for tier, x in llms.items()}
             app.state.cache = (
                 CacheConfig.from_patterns(
                     s.cache_similarity_threshold, s.cache_ttl_hours, s.cache_bypass_patterns
@@ -66,8 +81,9 @@ def create_app(
             yield
         finally:
             await pool.close()
-            if isinstance(built_llm, OpenAICompatibleLLM):
-                await built_llm.aclose()
+            for x in llms.values():
+                if isinstance(x, OpenAICompatibleLLM):
+                    await x.aclose()
 
     app = FastAPI(title="Gateway", version="0.1.0", lifespan=lifespan)
     app.include_router(query.router)

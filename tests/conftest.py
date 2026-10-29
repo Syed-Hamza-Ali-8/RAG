@@ -69,6 +69,12 @@ def settings() -> Settings:
         llm_small_api_key="stub",
         llm_small_model_id="stub-model",
         cache_enabled=False,  # suites that test the cache turn it on explicitly
+        routing_enabled=False,  # likewise routing
+        # Hermetic: no shadow-cost prices unless a test sets them (.env carries real list prices).
+        llm_small_price_input_per_m=None,
+        llm_small_price_output_per_m=None,
+        llm_large_price_input_per_m=None,
+        llm_large_price_output_per_m=None,
     )
 
 

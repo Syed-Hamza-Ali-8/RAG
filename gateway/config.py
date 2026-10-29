@@ -1,5 +1,6 @@
 """Typed settings. Every value comes from the environment / .env; model IDs are never defaulted."""
 
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -78,6 +79,18 @@ class Settings(BaseSettings):
     # Provider's per-model daily token cap (Groq free tier: 200,000/day, rolling 24 h). Used by the
     # eval pre-flight check; verify the current value in the provider console.
     llm_daily_token_limit: int = 200000
+
+    # Complexity routing (Phase 4). Off until the Phase 4 gate decides; both tiers must be configured.
+    routing_enabled: bool = False
+    routing_threshold: float = 0.5
+    # Shadow cost: list prices in USD per 1M tokens, per tier (EVAL_RESULTS.md cites the source). Unset → the
+    # cost is recorded as unknown (NULL), never guessed.
+    llm_small_price_input_per_m: Decimal | None = None
+    llm_small_price_output_per_m: Decimal | None = None
+    llm_large_price_input_per_m: Decimal | None = None
+    llm_large_price_output_per_m: Decimal | None = None
+    llm_local_price_input_per_m: Decimal | None = None
+    llm_local_price_output_per_m: Decimal | None = None
 
     # Semantic cache (spec 4.2; EVAL_RESULTS.md Phase 4 finding). A hit needs the same tenant, role
     # signature and content words; the cosine threshold is a second filter below the word check.
