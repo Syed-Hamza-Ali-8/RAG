@@ -650,7 +650,11 @@ scores: q051 0.6175 (multi-hop); q029 0.2717 and q109 0.2511 (single-hop, typica
 
 Gate items (spec §5): (1) cache hit rate on a realistic repeated-query workload; (2) near-miss pairs still
 produce different answers; (3) faithfulness with routing enabled within an acceptable delta of always-large,
-stated as a number; (4) cost and p95 latency deltas vs the Phase 2 baseline.
+stated as a number; (4) cost and p95 latency deltas vs the Phase 2 baseline. Added by the user, 2026-10-31:
+**(5) the isolation suites run green on a quiet machine before the gate closes**: `tests/test_acl_isolation.py`,
+`tests/test_admin_isolation.py` and `tests/test_cache_isolation.py`, run in full with nothing else running.
+They are the security proof; "no relevant code changed" is the assumption that lets a regression through, so
+this item is never satisfied by inference.
 
 **Item 2 is already covered** and is cited, not re-run: the cache isolation suite (all five near-miss pairs at
 every sweep threshold, 98/98 at 0.88 and at 0.99, and at all nine thresholds in the sweep) and the cache sweep
@@ -673,6 +677,8 @@ budget day plan. Compared with Phase 3 only. Predictions:
 - **Item 3 from Run A:** the shipped configuration's faithfulness on all 100 items. The always-large comparison
   exists on the 25-item subset only (routing off was 24/25 correct vs 22/25, faithfulness 100% vs 100%); a
   full-set always-large run would cost about a day of the large model's budget and is not part of this plan.
+  **Gap accepted by the user, 2026-10-31, and closed: not to be revisited.** The subset settled it (routing off 2
+  items better) and the mechanism explains why: answer quality is bounded by retrieval, not the generator.
 - **Item 4 from Run A:** cost per query (shadow cost at the list prices, recomputed for Phase 2 from its logged
   tokens) and p95 latency, each against the Phase 2 baseline run. Expected: cost per query within ±10% (same
   model, same six-chunk prompt); no latency direction predicted beyond the ~1 ms lookup.
