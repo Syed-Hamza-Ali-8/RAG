@@ -365,3 +365,13 @@ async def test_truncated_judge_call_is_logged_and_recorded_as_a_judge_error(
             record["judge_query_log_id"],
         )
     assert (row["purpose"], row["outcome"], row["completion_tokens"]) == ("eval_judge", "truncated", 1500)
+
+
+def test_aggregate_reports_cache_hits_separately() -> None:
+    records = [
+        rec("a", "single_hop", 1.0, False, judge=verdict(True), cache_hit=False),
+        rec("b", "single_hop", 1.0, False, judge=verdict(True), cache_hit=True),
+        rec("c", "single_hop", 1.0, False, judge=verdict(True), cache_hit=None),  # bypassed: not consulted
+    ]
+    g = aggregate(records)["generation"]
+    assert (g["cache_consulted"], g["cache_hit_items"]) == (2, ["b"])

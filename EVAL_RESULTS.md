@@ -590,10 +590,15 @@ pre-flight; the parts below headed "decided without the judge" were written and 
 Supplement (7 known small-model failures): correct 1/7 at every threshold (q109 on both tiers).
 
 **Judged results.**
-- **N = 0. *Needs large* is empty on both sets.** Subset: small tier correct 24/25, large tier 22/25. The one
-  supplement candidate, q051, went from a small-tier truncation to a large-tier **wrong** answer (contract end
-  "30 Nov 2026" against 31 December 2026): a confident error in place of no answer. q029 is wrong on both
-  tiers (the known neighbouring-date retrieval miss); q109 is correct on both.
+
+**q051: the larger model turned no answer into a wrong one.** The small model ran out of tokens and returned
+nothing; the large model returned a confident, cited, wrong date for when Acme's hosting contract ends ("30
+November 2026"; the agreement ends 31 December 2026). **In a system sold on trustworthy citations, a wrong
+answer is worse than no answer.** The upgrade that was supposed to help the hardest question made it worse.
+
+- **N = 0. *Needs large* is empty on both sets.** Subset: small tier correct 24/25, large tier 22/25. q051 (above)
+  was the only supplement candidate. q029 is wrong on both tiers (the known neighbouring-date retrieval miss);
+  q109 is correct on both.
 - **Small better: q074 and q005.** q074: the small tier answered correctly, the large tier refused. q005: both
   tiers give the same dates and both omit the auditor (Nordcert); the judge passed the small answer and
   failed the large one for that omission, which is judge inconsistency on identical substance (the second
@@ -630,13 +635,59 @@ scores: q051 0.6175 (multi-hop); q029 0.2717 and q109 0.2511 (single-hop, typica
 > answer quality here is bounded by retrieval, not by the generator. On the 25-item subset the small model
 > fails one question and the large model fails it too, because the fact it needs is not in the six chunks
 > either model sees. Sending any share of traffic to the large model raised shadow cost by up to 1.94× with
-> no measured quality gain on the subset, and no item gained among seven known small-model failures.
+> no measured quality gain on the subset, and no item gained among seven known small-model failures. On
+> the subset the large model was worse (22/25 correct against 24/25), and on the hardest failure it replaced
+> a non-answer with a confident wrong date: in a system sold on trustworthy citations, a wrong answer is
+> worse than no answer.
 > **The router is built, tested and configurable; it is disabled by default because the measurement showed
 > it costs money without improving answers on this corpus.** Revisit after Phase 5: hybrid retrieval changes
 > what reaches the generator, and only then could a larger model have something to fix.
 >
 > The transferable lesson: a complexity router only pays off when the generator is the bottleneck. Measure
 > which stage is binding before building one.
+
+## Phase 4 gate: plan and predictions (fixed 2026-10-30, before Run A)
+
+Gate items (spec §5): (1) cache hit rate on a realistic repeated-query workload; (2) near-miss pairs still
+produce different answers; (3) faithfulness with routing enabled within an acceptable delta of always-large,
+stated as a number; (4) cost and p95 latency deltas vs the Phase 2 baseline.
+
+**Item 2 is already covered** and is cited, not re-run: the cache isolation suite (all five near-miss pairs at
+every sweep threshold, 98/98 at 0.88 and at 0.99, and at all nine thresholds in the sweep) and the cache sweep
+(no hit served another item's answer at any threshold).
+
+**Run A: the Phase 4 baseline.** `run_eval.py --baseline "Phase 4" --clear-cache`: all 100 golden items,
+shipped configuration (cache on at 0.95, routing off), single pass, judge-v2, planned across sessions by the
+budget day plan. Compared with Phase 3 only. Predictions:
+- **Cache hits: exactly 0.** All 100 questions have distinct (tenant, content key) pairs and the cache starts
+  empty, so no request can hit. Any hit is a cache bug.
+- **Retrieval metrics identical to Phase 3.** Same corpus, chunker, embedder, ACL and top-k; the cache never
+  touches retrieval. Any difference is a bug.
+- **Correctness unchanged within judge and generation noise: |Δ| ≤ 3 items** against Phase 3's 77/85 correct
+  answerable. Unanswerable refusals stay 15/15, with no hallucination. Known movement: the completion limit
+  is now 1000 (was 700), so Phase 3's q052 truncation becomes a genuine refusal; q051 truncated once at 1000 on
+  2026-10-29 and may again. **A larger correctness move means something is wrong with the cache, not that it
+  improved anything.**
+- **Latency: about +1 ms p50 on every query** (the miss-path lookup, measured at p50 1 ms in the sweep);
+  totals are dominated by the model and this machine's noise.
+- **Item 3 from Run A:** the shipped configuration's faithfulness on all 100 items. The always-large comparison
+  exists on the 25-item subset only (routing off was 24/25 correct vs 22/25, faithfulness 100% vs 100%); a
+  full-set always-large run would cost about a day of the large model's budget and is not part of this plan.
+- **Item 4 from Run A:** cost per query (shadow cost at the list prices, recomputed for Phase 2 from its logged
+  tokens) and p95 latency, each against the Phase 2 baseline run. Expected: cost per query within ±10% (same
+  model, same six-chunk prompt); no latency direction predicted beyond the ~1 ms lookup.
+
+**Run B: realistic repeat workload** (`eval/repeat_workload.py`, `eval/repeat_workload.jsonl` committed with
+this section). 250 requests over the 100 items, Zipf-shaped (item at popularity rank r asked ⌈40 / r⌉ times:
+61 items asked once, the most popular 40 times), shuffled, each request by the item's own user, exact question
+text, cache cleared at the start. No LLM calls: misses replay Run A's real answers, so what a miss costs is
+that item's Run A shadow cost and model latency. Predictions:
+- **Hits = Σ (asks − 1) over cacheable items**, exactly: every repeat of a stored answer hits within the 24 h
+  TTL; bypassed, refused and truncated items never hit. With Phase 3's outcomes standing in for Run A's, that
+  is 138 of 250 (55.2%); the exact figure is fixed by Run A's outcomes before Run B runs.
+- p50 latency: hits about 25 ms; misses about 27 ms plus the model (~1.1 s p50).
+- Shadow cost saved: the hit requests' share of the no-cache cost, close to the hit rate (per-query costs are
+  similar).
 
 ## Measurement notes
 

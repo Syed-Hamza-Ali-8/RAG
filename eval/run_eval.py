@@ -207,6 +207,9 @@ def aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
             "hallucinated_on_unanswerable": [r["id"] for r in unanswerable if not r["refused"]],
             "refused_answerable": [r["id"] for r in ans if r["refused"]],
             "truncated_items": [r["id"] for r in truncated],
+            # Phase 4: served from the semantic cache (None when the cache was not consulted).
+            "cache_consulted": sum(1 for r in generated if r.get("cache_hit") is not None),
+            "cache_hit_items": [r["id"] for r in generated if r.get("cache_hit")],
         }
     return out
 
@@ -322,6 +325,21 @@ async def judge_and_log(
     return out
 
 
+async def _query_log_fields(conn: asyncpg.Connection, tenant_id: Any) -> dict[str, Any]:
+    """The item's own query_log row: its id and what the cache did (Phase 4)."""
+    row = await conn.fetchrow(
+        "SELECT id, cache_hit, cache_lookup_ms, est_cost_usd FROM query_log WHERE tenant_id = $1 "
+        "ORDER BY id DESC LIMIT 1",
+        tenant_id,
+    )
+    return {
+        "query_log_id": row["id"],
+        "cache_hit": row["cache_hit"],
+        "cache_lookup_ms": row["cache_lookup_ms"],
+        "est_cost_usd": None if row["est_cost_usd"] is None else str(row["est_cost_usd"]),
+    }
+
+
 async def evaluate_item(
     item: dict[str, Any],
     client: httpx.AsyncClient,
@@ -356,9 +374,7 @@ async def evaluate_item(
     if response.status_code == 502 and response.json().get("error") == "llm_truncated":
         # Neither answered nor refused: recorded as its own outcome, never judged.
         async with pool.acquire() as conn:
-            record["query_log_id"] = await conn.fetchval(
-                "SELECT max(id) FROM query_log WHERE tenant_id = $1", tenant_id
-            )
+            record.update(await _query_log_fields(conn, tenant_id))
         record.update(truncated=True, refused=False, answer=None, citations=[])
         return record
     if response.status_code != 200:
@@ -367,9 +383,7 @@ async def evaluate_item(
         )
     body = response.json()
     async with pool.acquire() as conn:
-        record["query_log_id"] = await conn.fetchval(
-            "SELECT max(id) FROM query_log WHERE tenant_id = $1", tenant_id
-        )
+        record.update(await _query_log_fields(conn, tenant_id))
     top = chunks[: settings.retrieval_top_k]
     by_uuid = {str(c.chunk_id): c for c in top}
     cited = [by_uuid.get(c["chunk_id"]) for c in body["citations"]]
@@ -681,6 +695,13 @@ async def run(
         async with pool.acquire() as conn:
             await resolve_gold_uuids(conn, items)
             corpus_chunks = await conn.fetchval("SELECT count(*) FROM chunks")
+            if args.clear_cache:
+                if args.resume:
+                    raise SystemExit("--clear-cache is for fresh runs only; a resumed run keeps its cache")
+                await conn.execute("DELETE FROM semantic_cache")
+            live_cache_entries = await conn.fetchval(
+                "SELECT count(*) FROM semantic_cache WHERE expires_at > now()"
+            )
             if judge_llm is not None:
                 gen_model = settings.provider(settings.llm_tier).model_id
                 plan: dict[str, list[tuple[str, int]]] = defaultdict(list)
@@ -734,6 +755,7 @@ async def run(
             "cache_similarity_threshold": settings.cache_similarity_threshold
             if settings.cache_enabled
             else None,
+            "cache_live_entries_at_start": live_cache_entries,
             "retrieve_k": RETRIEVE_K,
             "delay_ms": int(delay_s * 1000),
             "started_utc": session_started,
@@ -833,6 +855,9 @@ def main() -> None:
     parser.add_argument("--baseline", metavar="LABEL", help='record a full run as a baseline, e.g. "Phase 2"')
     parser.add_argument("--delay-ms", type=int, help="override EVAL_REQUEST_DELAY_MS")
     parser.add_argument("--resume", metavar="PARTIAL", help="continue a stopped run from its .partial.jsonl")
+    parser.add_argument(
+        "--clear-cache", action="store_true", help="fresh runs only: empty the semantic cache before starting"
+    )
     parser.add_argument(
         "--force-containers",
         action="store_true",
