@@ -151,6 +151,11 @@ calibration items were constructed to be clear-cut, and the real-world false-neg
 verdict is likely higher than calibration implied. Derived figures and stacked citations are where it
 showed.
 
+**Second field data point (2026-10-30, Phase 4 routing).** q005's small- and large-tier answers give the same
+dates and both omit the auditor (Nordcert); the judge passed the small answer as correct and failed the large
+one for "omitting the auditor". Same substance, opposite `correct` verdicts. Single-item verdict differences
+between conditions should be read with this in mind; aggregate differences of one item are within it.
+
 ## Golden set — Phase 3 re-baseline: pre-registered expectations (fixed 2026-10-24, before the run)
 
 From Phase 3 the harness retrieves each golden item as its seeded `as_user`, through the SQL ACL
@@ -553,12 +558,12 @@ on this data, and an LLM classifier is not justified by it.
 - Sanity check of the features, independent of outcomes: multi-hop questions score higher on average than
   single-hop ones.
 
-## Phase 4 routing: results so far (2026-10-29; judging pending)
+## Phase 4 routing: results (recorded 2026-10-29, judged 2026-10-30)
 
 Recorded by `eval/routing_sweep.py --record` (64 answers: 25 subset + 7 supplement items, both tiers, cache
-off; `eval/routing_sweep/recording.jsonl`). Judging was refused by its budget pre-flight (judge model at
-191,267 of 200,000 tokens); it runs after the window frees. Everything below is decided by recorded
-outcomes alone.
+off; `eval/routing_sweep/recording.jsonl`); judged 2026-10-30 (26 answers, judge-v2, 0 errors;
+`eval/routing_sweep/verdicts.jsonl`). The first judging attempt on 2026-10-29 was refused by its budget
+pre-flight; the parts below headed "decided without the judge" were written and committed before judging.
 
 **Decided without the judge:**
 - **Subset: *needs large* = 0 items** (prediction held). The small tier fails only q052, and the large tier
@@ -569,18 +574,37 @@ outcomes alone.
   tiers answered).
 - **Possible regression:** q074 is answered by the small tier and refused by the large tier.
 
-**Routing curve, subset (25 items).** Shares and costs from the recording; correctness pending.
+**Routing curve, subset (25 items).** Judged 2026-10-30.
 
-| Threshold | Sent to large | Shadow cost (USD) | LLM p50 |
-|---|---|---|---|
-| 0.0-0.1 (always large) | 25/25 | 0.010696 | 1,133 ms |
-| 0.2 | 17/25 | 0.009342 | 1,183 ms |
-| 0.3 | 8/25 | 0.007462 | 1,150 ms |
-| 0.4 | 6/25 | 0.006936 | 1,174 ms |
-| 0.5 | 5/25 | 0.006718 | 1,150 ms |
-| 0.6 | 4/25 | 0.006474 | 1,150 ms |
-| 0.7 | 2/25 | 0.006006 | 1,150 ms |
-| 0.8+ (always small) | 0/25 | 0.005503 | 1,106 ms |
+| Threshold | Sent to large | Correct | Faithful (answered) | Refused | Shadow cost (USD) | LLM p50 |
+|---|---|---|---|---|---|---|
+| 0.0-0.1 (always large) | 25/25 | 22/25 | 20/20 | 5 | 0.010696 | 1,133 ms |
+| 0.2 | 17/25 | 23/25 | 20/20 | 5 | 0.009342 | 1,183 ms |
+| 0.3 | 8/25 | 23/25 | 20/20 | 5 | 0.007462 | 1,150 ms |
+| 0.4 | 6/25 | 23/25 | 20/20 | 5 | 0.006936 | 1,174 ms |
+| 0.5 | 5/25 | 23/25 | 20/20 | 5 | 0.006718 | 1,150 ms |
+| 0.6 | 4/25 | 24/25 | 21/21 | 4 | 0.006474 | 1,150 ms |
+| 0.7 | 2/25 | 24/25 | 21/21 | 4 | 0.006006 | 1,150 ms |
+| 0.8+ (always small) | 0/25 | **24/25** | 21/21 | 4 | **0.005503** | 1,106 ms |
+
+Supplement (7 known small-model failures): correct 1/7 at every threshold (q109 on both tiers).
+
+**Judged results.**
+- **N = 0. *Needs large* is empty on both sets.** Subset: small tier correct 24/25, large tier 22/25. The one
+  supplement candidate, q051, went from a small-tier truncation to a large-tier **wrong** answer (contract end
+  "30 Nov 2026" against 31 December 2026): a confident error in place of no answer. q029 is wrong on both
+  tiers (the known neighbouring-date retrieval miss); q109 is correct on both.
+- **Small better: q074 and q005.** q074: the small tier answered correctly, the large tier refused. q005: both
+  tiers give the same dates and both omit the auditor (Nordcert); the judge passed the small answer and
+  failed the large one for that omission, which is judge inconsistency on identical substance (the second
+  field data point, after q054). The large answer's extra stacked `[S6]` citation is genuinely unsupported.
+  Counted strictly, always-small leads always-large by 2 items; setting q005 aside, by 1 (q074).
+- **Underperform verdict, read off the committed table: not underperform.** *Needs large* is empty, so the
+  heuristics have nothing to miss, and an LLM classifier is not justified by this data.
+- **Acceptable-delta check** (pre-registered: routed correctness and faithfulness within 1 item of always-large
+  on the subset): **passes.** Routing off (always small) is 24/25 correct against always-large's 22/25 (2 items
+  better, not worse) and 100% faithful against 100% (21/21 vs 20/20). Every threshold in the sweep is within
+  the delta, and none is better than routing off.
 
 Always-large costs **1.94×** always-small; latency is a wash.
 
@@ -606,7 +630,7 @@ scores: q051 0.6175 (multi-hop); q029 0.2717 and q109 0.2511 (single-hop, typica
 > answer quality here is bounded by retrieval, not by the generator. On the 25-item subset the small model
 > fails one question and the large model fails it too, because the fact it needs is not in the six chunks
 > either model sees. Sending any share of traffic to the large model raised shadow cost by up to 1.94× with
-> no measured quality gain on the subset, and at most N items gained among seven known small-model failures.
+> no measured quality gain on the subset, and no item gained among seven known small-model failures.
 > **The router is built, tested and configurable; it is disabled by default because the measurement showed
 > it costs money without improving answers on this corpus.** Revisit after Phase 5: hybrid retrieval changes
 > what reaches the generator, and only then could a larger model have something to fix.
