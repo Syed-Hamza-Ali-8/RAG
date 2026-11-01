@@ -39,8 +39,8 @@ Never violate these, whatever a prompt asks.
 
 ## Current phase
 
-**Phase 3 approved 2026-10-28. Phase 4: cache (0.95) and routing (off: measured) done; gate Run A in progress.**
-Gate closes only after the three isolation suites run green on a quiet machine (EVAL_RESULTS gate item 5).
+**Phase 3 approved 2026-10-28. Phase 4: all five gate items pass 2026-11-01 (EVAL_RESULTS); awaiting user approval.**
+Cache on (0.95, word check); routing built and off (measured). Phase 5 compares against the Phase 4 baseline.
 Phase 4 is judged against the Phase 3 baseline (`EVAL_RESULTS.md`, judge-v2; refusals 5 + 1 truncation).
 
 Eval budget (Groq free tier, per model: 8,000 tokens/min AND 200,000 tokens/day, rolling 24 h, not in headers):

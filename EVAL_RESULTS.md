@@ -778,6 +778,35 @@ flight; the running process had already loaded `93811d2`, which is the code that
   one. The small cost drop follows the slightly shorter prompts since Phase 3's ACL filtering. The logged shadow
   cost (`query_log.est_cost_usd`) matches the recomputed figure exactly (USD 0.022596 for the 100 queries).
 
+## Phase 4 gate: results (2026-11-01; awaiting user approval)
+
+| Gate item | Evidence | Result |
+|---|---|---|
+| 1. Cache hit rate on a realistic repeated-query workload | Run B (`eval/gate_phase4/run_b.json`): 250 Zipf-shaped requests over the 100 items, exact repeats, cache cleared at the start | **143/250 hits (57.2%), exactly as predicted from Run A.** Hit p50 19 ms vs miss 21 ms plus the model (Run A model p50 806 ms). Shadow cost USD 0.054004 → 0.024363: **USD 0.029641 saved (54.9%)**, exactly as predicted. Paraphrased traffic would not hit (cache sweep: 0/25 at every threshold, the stated cost of the word check). |
+| 2. Near-miss pairs still produce different answers | Cited, not re-run: cache isolation suite (all five pairs at all nine sweep thresholds); cache sweep (no hit served another item's answer at any threshold); and Run A (near-miss pairs both correct 5/5) | **Pass** |
+| 3. Faithfulness with routing enabled within an acceptable delta of always-large | Routing ships **off** (measured decision). Shipped configuration on all 100 items (Run A): faithful 79/80 (98.75%). Always-large vs routing off on the 25-item subset: correct 22/25 vs 24/25, faithful 20/20 vs 21/21 | **Delta: routing off is 2 items more correct and 0 points less faithful than always-large** (subset); within the pre-registered 1-item delta. The full-set always-large comparison was not run (gap accepted and closed). |
+| 4. Cost and p95 latency deltas vs the Phase 2 baseline | Run A vs the Phase 2 run, each from its own `query_log` rows | **Cost per query −5.1%** (USD 0.000226 vs 0.000238). **p95 latency −1,013 ms** (1,688 vs 2,701 ms), which is model-side variance between runs a week apart, not the cache (Run A had 0 hits): not claimed as a gain. |
+| 5. Isolation suites green on a quiet machine (added by the user) | `tests/test_acl_isolation.py`, `tests/test_admin_isolation.py`, `tests/test_cache_isolation.py`, run together in full at `356d433`, nothing else running from this project, 7.8 GB machine | **249/249 passed** (124 + 27 + 98), 1 min 57 s, peak 803 MB. Full suite 452/452 and smoke pass on the same commit. |
+
+**Phase 3 → Phase 4, with the caveats applied.** Both baselines use judge-v2, so judge-scored numbers are
+comparable this time.
+
+| | Phase 3 | Phase 4 | Reading |
+|---|---|---|---|
+| Retrieval (recall@6 / MRR / all-hops@10) | 86.5% / 0.700 / 87.1% | identical, all 100 rankings | The cache never touches retrieval. |
+| Correct (answerable) | 77/85 | 75/85 | Δ −2, inside the pre-registered ±3 noise band; not a cache effect (0 hits). |
+| Faithful (answered) | 79/79 | 79/80 | One unfaithful partial answer (q051). |
+| Citations supported | 74/79 | 74/80 | |
+| Refused answerable / truncated | 5 / 1 | 4 / 1 | q051 and q058 now give partial answers instead of refusing; q054 truncated instead of q052. |
+| Unanswerable refused | 15/15 | 15/15 | |
+| Cost per query (shadow) | USD 0.000224 | USD 0.000226 | Flat. |
+| p95 latency | 2,674 ms | 1,688 ms | Model-side variance, not a Phase 4 effect. |
+
+**What Phase 4 adds, stated plainly:** a permission-scoped semantic cache that, on repeated traffic shaped like
+real use, served 57% of requests in ~19 ms and cut shadow cost by 55%, while changing no answer, adding ~2 ms to
+every miss, and passing every isolation probe. Paraphrased questions do not hit, by design. Complexity routing is
+built, tested and off by default, because on this corpus it costs money without improving answers.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
