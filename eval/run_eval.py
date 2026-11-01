@@ -596,9 +596,13 @@ def write_baseline_section(label: str, result: dict[str, Any], baseline_file: Pa
     EVAL_RESULTS_MD.write_text(text, encoding="utf-8")
 
 
-def previous_result(mode: str, exclude: Path) -> dict[str, Any] | None:
-    files = sorted(p for p in RESULTS_DIR.glob(f"*_{mode}.json") if p != exclude)
-    return json.loads(files[-1].read_text(encoding="utf-8")) if files else None
+def comparison_target(compare_to: Path | None, baselines_dir: Path = BASELINES_DIR) -> Path | None:
+    """What a run is compared against: --compare-to if given, else the latest phase baseline. Never "the last
+    run of the same mode": that once pointed a Phase 5 retrieval run at Phase 2's unfiltered retrieval."""
+    if compare_to is not None:
+        return compare_to
+    phases = sorted(baselines_dir.glob("phase-*.json"), key=lambda p: int(p.stem.split("-")[1]))
+    return phases[-1] if phases else None
 
 
 def _fmt(x: float | None) -> str:
@@ -860,7 +864,9 @@ async def run(
     partial.unlink()
     eligible = meta["is_baseline_eligible"]
     print(f"\nresults: {out.relative_to(ROOT)} (mode: {mode}; baseline-eligible: {eligible})")
-    print_comparison(result, previous_result(mode, out))
+    target = comparison_target(args.compare_to)
+    print(f"\ncomparison target: {target if target else 'none'}")
+    print_comparison(result, json.loads(target.read_text(encoding="utf-8")) if target else None)
     if args.baseline:
         BASELINES_DIR.mkdir(exist_ok=True)
         slug = args.baseline.lower().replace(" ", "-")
@@ -884,6 +890,12 @@ def main() -> None:
     parser.add_argument("--resume", metavar="PARTIAL", help="continue a stopped run from its .partial.jsonl")
     parser.add_argument(
         "--clear-cache", action="store_true", help="fresh runs only: empty the semantic cache before starting"
+    )
+    parser.add_argument(
+        "--compare-to",
+        type=Path,
+        metavar="RESULT_JSON",
+        help="results or baseline file to compare against (default: the latest eval/baselines/phase-N.json)",
     )
     parser.add_argument(
         "--force-containers",

@@ -375,3 +375,14 @@ def test_aggregate_reports_cache_hits_separately() -> None:
     ]
     g = aggregate(records)["generation"]
     assert (g["cache_consulted"], g["cache_hit_items"]) == (2, ["b"])
+
+
+def test_comparison_defaults_to_the_latest_phase_baseline(tmp_path: Path) -> None:
+    from run_eval import comparison_target
+
+    assert comparison_target(None, tmp_path) is None
+    for n in (2, 4, 10):
+        (tmp_path / f"phase-{n}.json").write_text("{}", encoding="utf-8")
+    assert comparison_target(None, tmp_path) == tmp_path / "phase-10.json"  # numeric, not lexical
+    explicit = tmp_path / "some_run.json"
+    assert comparison_target(explicit, tmp_path) == explicit
