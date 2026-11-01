@@ -915,6 +915,37 @@ used judge-v1, so the judgement is against Phase 4.
   on the buried-fact class). Beyond that, always-fuse is rejected whatever it gains on multi-hop: displacing good
   vector hits on simple questions is a cost the rule does not trade.
 
+### M1 (hybrid: vector + FTS, RRF) measured 2026-11-01
+
+Full 100-item `run_eval.py --retrieval-only` with `RETRIEVAL_MODE=hybrid` at `cf593c6` (RRF k = 60, top 20 per
+path; `eval/phase5/m1_hybrid.json`), compared item by item with the Phase 4 baseline. No LLM calls. (The
+harness's own comparison line points at the last retrieval-only run, Phase 2's unfiltered one from 2026-10-23,
+which is not the comparator.)
+
+| Measure | Phase 4 | M1 | Predicted | |
+|---|---|---|---|---|
+| Buried-fact recall@6 | 18/20 | **20/20** | +1 (range 0 to +2) | held, top of range |
+| Multi-hop all-hops@10 | 15/25 | **17/25** | **+2** (range +1 to +4) | **held exactly** |
+| … lexical group | 0/5 | **2/5** | gains here only | held |
+| … bridge group | 0/5 | **0/5** | unchanged | held |
+| Multi-hop all-hops@6 | 11/25 | **14/25** | +1 to +3 | held, top of range |
+| Single-hop recall@6 | 46/50 | **49/50** | no loss beyond 1 | held: 0 lost, 3 gained |
+| q022 (regression check) | rank 5 | rank 3 | stays in the top 6 | held |
+
+- **The theory held where it could have failed:** both multi-hop gains are lexical-group items (q067 hop 0:
+  not in the top 10 → rank 7; q068 hop 1: → rank 8), and no bridge-group item moved into the top 10. A gain in the
+  bridge group would have falsified the lexical/bridge account; none came. The other three lexical items stayed
+  out (q070, q073, q075), so FTS lifted 2 of 5 candidates.
+- **Buried facts:** q023 (not in the top 10 → rank 4) and q106 (rank 10 → 5), the two predicted candidates sharing
+  one gold chunk, moved together, as noted in the pre-registration.
+- **Single-hop gained 3 and lost none at recall@6:** q023 and q106 (above) and q032, which was not predicted.
+- **all-hops@6 gains came from items already passing @10** (q060 7 → 3, q063 7/5 → 5/2, q066 8 → 2), so the model now
+  sees both hops for them; q067 and q068 reached the top 10 but not the top 6.
+- **What got worse:** **q029's gold chunk fell out of the top 10** (rank 9 → beyond 10): a single-hop loss at @10, not
+  at @6, on an item already answered wrongly (the neighbouring-date retrieval miss). Smaller shifts that stayed inside
+  the top 6: q074 hop 1 (2 → 5), q012 (2 → 3), q104 and q110 (1 → 2/3), several multi-hop hops by one place; q052 hop 1
+  7 → 8 and q075 hop 0 5 → 6.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
