@@ -895,6 +895,26 @@ used judge-v1, so the judgement is against Phase 4.
 - Retrieval changes do not wipe cached answers (the triggers fire on chunk and document writes only), so every
   measurement run clears the cache first.
 
+### Addendum (user-approved, fixed 2026-11-01 before any Phase 5 measurement)
+
+- **Spec defect recorded** as CLAUDE.md correction T (the §4.3 graph query filters only the final chunks).
+- **Extraction provenance:** every extraction run records its model ID and prompt version beside the cost and
+  ingestion time per document, so a later re-extraction is comparable.
+- **M1 keyword path, configuration fixed here:** Postgres FTS with the `english` configuration over the chunk's
+  heading path and content; the query is the OR of the question's lexemes (an AND of every word would match almost
+  nothing for full-sentence questions); ranked by `ts_rank_cd` with no length normalisation; ACL predicate in the
+  WHERE clause. Each keyword hit also carries its cosine similarity, so the routing classifier's retrieval features
+  keep reading cosines rather than RRF scores.
+- **Query planner (spec task 6), decision rule fixed before measuring:** two variants of M2 are measured, *always
+  fuse* (the graph path is an RRF input on every query) and *gated* (the graph path joins only when the complexity
+  score is ≥ 0.38, the gap between the highest single-hop score, 0.369, and the lowest multi-hop score, 0.390, in
+  the score distribution measured on 2026-10-29 with no outcomes involved). **Choose gated unless always-fuse
+  catches at least 2 more multi-hop items (all-hops@10) than gated**, because gating spares the graph cost on the
+  75% of traffic that is not multi-hop.
+- **Single-hop regression accepted from always-fuse: at most 1 item** of single-hop recall@6 below M1 (and no loss
+  on the buried-fact class). Beyond that, always-fuse is rejected whatever it gains on multi-hop: displacing good
+  vector hits on simple questions is a cost the rule does not trade.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the

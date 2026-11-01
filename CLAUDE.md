@@ -138,6 +138,7 @@ This describes the END STATE. Phase 1 builds steps 4 (vector retrieval only), 5,
 - **P.** `EMBEDDING_MODEL_ID` and `EMBEDDING_DIM` come from `.env`. On startup, assert the model's output dim equals the `chunks.embedding` dim and fail fast if it doesn't.
 - **Q.** No Gemini in Phase 1. Groq serves both tiers (two models from its `/models` roster). Add Gemini in Phase 4 only if routing needs it, with its base URL taken from Google's official docs, never guessed.
 - **S.** The project is Gateway: package `gateway/` (the spec's `app/`), repo root `/mnt/d/hamza/RAG_Projects/gateway`.
+- **T.** Spec defect: §4.3's graph CTE filters only the final chunks, leaking entity existence through restricted provenance. Apply the ACL predicate to every traversed relation's provenance chunk, not just the end.
 
 ## When blocked
 
