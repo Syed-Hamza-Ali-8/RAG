@@ -946,6 +946,38 @@ which is not the comparator.)
   the top 6: q074 hop 1 (2 → 5), q012 (2 → 3), q104 and q110 (1 → 2/3), several multi-hop hops by one place; q052 hop 1
   7 → 8 and q075 hop 0 5 → 6.
 
+### M2 feasibility probe: pre-registration (fixed 2026-11-01, before any extraction)
+
+M2's whole remaining target is the bridge group: buried-fact is closed at 20/20 and the lexical group has been
+measured. Before extracting the full corpus (251 chunks, two to three days of generator budget), a graph is built
+over a subset and the bridge items are measured against it. **This is a feasibility probe, not the M2
+measurement.**
+
+- **Subset** (`eval/phase5/graph_probe_subset.json`, committed with this section): **54 chunks**, the gold chunks of
+  both hops of q051, q056, q058, q064 and q069 (10) plus every chunk M1 retrieves in the top 10 for those five
+  questions (44 distractors the graph path must walk past). Whole gold documents were the first definition
+  considered; they come to 125 chunks (the contracts and post-mortems run to 14-19 chunks), which is no longer a
+  probe, so the subset was narrowed to the chunks these questions actually touch.
+- **"Resolves":** the item reaches all-hops@10 (both hops in the top 10) with the graph path fused into M1. All
+  five score above the planner's gate threshold (0.62-0.72 against 0.38), so gated and always-fuse coincide for
+  them; the planner choice is not tested here. all-hops@6 is reported too.
+- **Decision rule:** **2 or more** of the 5 resolve → extract the full corpus and run the real M2 measurement (with
+  the planner comparison and the single-hop limit already fixed). **0** → do not extract; report "the graph layer
+  did not help on this corpus" the way routing was reported, with the limitation below. **Exactly 1** → below the
+  bar, so no full extraction by default; reported with the item named, and brought to the user to decide.
+- **Limitation, stated in advance:** the subset omits most of the corpus. The full graph could connect paths the
+  subset cannot see, so a 0 on the subset is weaker evidence than a 0 on the full corpus; the omitted chunks could
+  also add distracting paths, so a probe success can overstate full-corpus success, which is why 2 or more leads
+  to the full measurement rather than to a claim.
+- **Extraction and graph, fixed for the probe:** small tier (`openai/gpt-oss-20b`), prompt `extract-v1`, structured
+  JSON, the spec's six entity types (PERSON, ORG, CONTRACT, POLICY, DATE, PRODUCT), relation labels as short verb
+  phrases, one call per chunk with provenance; model ID, prompt version, tokens and time per chunk recorded.
+  Entity resolution by normalised name within a tenant (the spec's embedding-similarity and alias steps are not
+  needed to test feasibility and are not built for the probe). Graph path: seed entities are those extracted from
+  M1's fused top 6; the walk goes both directions, depth at most 2, and every traversed relation must have a
+  provenance chunk the caller may read (correction T); candidates are the provenance chunks reached, ordered by
+  depth then by number of supporting relations, top 20 into RRF as a third list (k = 60).
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
