@@ -28,6 +28,7 @@ from gateway.routing.policy import price_for, shadow_cost
 from run_eval import BUDGET_MARGIN, require_stack, tokens_used_24h
 
 SUBSET = Path(__file__).resolve().parent / "phase5" / "graph_probe_subset.json"
+FIRST_N_STRICT = 5  # stop rule for extract-v1-low (EVAL_RESULTS.md, M2 probe deviation)
 EST_TOKENS_PER_CHUNK = 2000  # pre-registered estimate (1.5-2k); the live check uses logged tokens
 
 
@@ -90,6 +91,9 @@ async def extract(settings: Settings) -> int:
             done += outcome == "ok"
             failed += outcome != "ok"
             print(f"  [{n}/{len(rows)}] {row['tenant']}/{row['chunk']}: {outcome}", flush=True)
+            if outcome != "ok" and done + failed <= FIRST_N_STRICT:
+                print(f"STOPPED: {outcome} within the first {FIRST_N_STRICT} attempts (stop rule)")
+                return 2
             if outcome == "error":
                 print("STOPPED: provider error (see graph_extraction.error); not repeating it on every chunk")
                 return 2
