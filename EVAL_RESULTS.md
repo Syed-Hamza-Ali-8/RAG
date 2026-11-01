@@ -292,6 +292,14 @@ What to watch in Phase 5: whether the stacked-marker rate or the adjacent-chunk 
 FTS and graph paths add neighbouring chunks to the six sources; q029 should change only if its gold chunk
 enters the top 6.
 
+Added 2026-11-01 (Phase 4 Run A), the before-picture for Phase 5: **q051's unsupported citation.** With one hop
+missing from its six sources, the model answered the hop it could see and wrote that "the sources give no
+contract end date", citing a chunk (S2) that does not support that claim; judge-v2 marked it unfaithful, the
+only unfaithful answer in Run A (79/80). A citation attached to a statement about what the sources *lack* is
+a distinct failure from the stacked-marker pattern above. Hybrid retrieval changes which chunks are available
+to cite: watch whether q051's missing hop enters the sources (then the claim disappears), and whether
+partial answers of this kind (q051, q058) become more or less common.
+
 ### Corrections after the Phase 3 gate (2026-10-28)
 
 - **Truncation is its own outcome.** The provider raises `TruncatedCompletion` when the finish reason is
@@ -694,6 +702,12 @@ that item's Run A shadow cost and model latency. Predictions:
 - p50 latency: hits about 25 ms; misses about 27 ms plus the model (~1.1 s p50).
 - Shadow cost saved: the hit requests' share of the no-cache cost, close to the hit rate (per-query costs are
   similar).
+
+**Run B prediction, fixed from Run A's outcomes (2026-11-01, before Run B runs):** Run A answered 80 items; minus
+q056 and q074 (bypassed), **78 are cacheable**. Predicted **hits = 143 of 250 requests (57.2%)**, exactly. The
+repeated items that can never hit: q054 (truncated); q066, q078, q084, q087, q106 (refused). Predicted shadow cost:
+**USD 0.054004 without the cache, USD 0.029641 saved (54.9%)**, each miss costed at its item's Run A cost. Any
+other hit count means the cache is not doing what it is specified to do.
 
 ## Golden set baseline — Phase 4
 
