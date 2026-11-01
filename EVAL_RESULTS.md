@@ -822,6 +822,79 @@ real use, served 57% of requests in ~19 ms and cut shadow cost by 55%, while cha
 every miss, and passing every isolation probe. Paraphrased questions do not hit, by design. Complexity routing is
 built, tested and off by default, because on this corpus it costs money without improving answers.
 
+## Phase 5 (GraphRAG + hybrid retrieval): pre-registration (fixed 2026-11-01, before any Phase 5 code)
+
+**Baseline: Phase 4** (`eval/baselines/phase-4.json`) for every comparison, the standing rule. The spec's gate
+asks for multi-hop accuracy against Phase 2; both numbers are reported, but Phase 2 predates the ACL shift and
+used judge-v1, so the judgement is against Phase 4.
+
+### What is actually gainable now
+
+- **Buried-fact recall@6: 18/20; at most 2 gainable** (q023, gold not in the top 10; q106, gold at rank 10). A
+  correction to the earlier framing: the original ceiling note allowed 3 gainable items from Phase 2's 17/20, and
+  Phase 3's ACL shrinkage took **one** (17 → 18), not two. Both remaining items have the same gold chunk
+  (`hr-leave-policy#1`, a large mixed-topic chunk) and both questions share rare words with it ("Hajj";
+  "maternity", "reduced hours", "returning"), which is the shape keyword search can help.
+- **Multi-hop all-hops@10: 15/25; 10 gainable**, in two structural groups (missing hop's gold chunk compared with
+  the question's distinctive words, no search run):
+  - *Lexical* (the missing hop shares distinctive words with the question): q067 (Tessera, notice), q068 (ACCA,
+    exam, study leave, sitting), q070 (Ledger Vault, audit working papers, contract end), q073 (Tessera, resize,
+    storage, March 2026 outage), q075 (Tessera, Service Credit, availability, March 2026).
+  - *Bridge* (the missing hop shares only generic words; it connects through an entity named in the hop already
+    found): q051 (Cobalt Cloud), q056 (the failover runbook setting), q058 (the Brightwater engagement lead's
+    practice), q064 (Tessera Cloud's commitment), q069 (Sunridge data return → the ISO surveillance plan).
+  - Also reported: **all-hops@6 11/25**, what the model actually sees; q052, q060, q063 and q066 pass @10 but not @6.
+- **Multi-hop correctness: 18/25** (Phase 4, judge-v2), higher than all-hops@6 (11/25): the model sometimes answers
+  from evidence outside the labelled gold chunks, so retrieval gains will not map one-to-one onto correctness.
+  Phase 2's 18/25 was judge-v1 and is not comparable.
+- **Single-hop: recall@6 46/50, correct 47/50.**
+- **q022 is no longer a Phase 5 test.** The EVAL_RESULTS criterion (on-call chunk in its top 6, answered with a
+  valid citation) has been met since Phase 3's ACL filtering (rank 5, correct in Phase 3 and Phase 4). It becomes
+  a regression check: it must stay in the top 6.
+
+### Measurement plan: two mechanisms, two measurements
+
+- **M1, hybrid:** vector + Postgres FTS, fused with Reciprocal Rank Fusion. Constants fixed here, not tuned on the
+  golden set: RRF k = 60, each path contributes its top 20, the model still sees the fused top 6.
+- **M2, hybrid + graph:** M1 plus the graph path as a third RRF input.
+- Each is measured by a full 100-item `run_eval.py --retrieval-only` run (no LLM calls, so attribution costs
+  nothing): M1 against Phase 4, M2 against M1. The gate is one full judged run of the final configuration
+  (two-day budget), cache cleared at its start.
+- The optional cross-encoder rerank (spec task 5) is not planned.
+
+### Predicted deltas (modest by intent)
+
+**M1, hybrid, against Phase 4:**
+- Buried-fact recall@6: **+1** (19/20); range 0 to +2. The two items share one gold chunk and may move together.
+- Multi-hop all-hops@10: **+2** (17/25); range +1 to +4, from the lexical group only; the bridge group unchanged.
+  all-hops@6: +1 to +3.
+- Single-hop recall@6: no loss beyond 1 item (≥ 45/50). A larger drop means fusion is demoting correct vector hits.
+- q022 stays in the top 6.
+
+**M2, graph, against M1:**
+- Multi-hop all-hops@10: **+1**; range 0 to +2, from the bridge group only. It depends on a small free model
+  extracting the bridging entities and relations correctly; if the graph adds nothing, that is reported as plainly
+  as routing was.
+- Buried-fact and single-hop: no change (± 1).
+
+**Gate run, against Phase 4:** multi-hop correct 18/25 → +1 to +3; single-hop correct no regression beyond the
+±3-item noise band seen in Run A.
+
+### Constraints fixed before design
+
+- **Every path filters ACLs in SQL** (invariant 1): the FTS query uses `acl_predicate`; the graph walk applies the
+  predicate to **every relation it traverses** (through that relation's provenance chunk), not only to the final
+  chunks. The spec's §4.3 query applies it only at the end, which would reveal that an entity exists through a
+  restricted relation; correction L forbids that. The walk goes both directions at each step (correction M), depth
+  capped at 2.
+- The entity-leak probes (a033-a038) and all other adversarial probes run against every path automatically (P1),
+  and the structural test that every chunks query carries the predicate extends to the FTS and graph SQL.
+- **Extraction:** small tier, structured JSON, the spec's six entity types, per chunk with provenance. 251 chunks at
+  roughly 1.5-2k tokens each is 375-500k generator tokens, two to three days of budget, so extraction is resumable
+  per chunk; extraction cost and ingestion time per document are recorded (a gate item).
+- Retrieval changes do not wipe cached answers (the triggers fire on chunk and document writes only), so every
+  measurement run clears the cache first.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the

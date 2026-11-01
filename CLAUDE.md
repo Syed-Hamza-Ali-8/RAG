@@ -39,9 +39,8 @@ Never violate these, whatever a prompt asks.
 
 ## Current phase
 
-**Phase 3 approved 2026-10-28. Phase 4: all five gate items pass 2026-11-01 (EVAL_RESULTS); awaiting user approval.**
-Cache on (0.95, word check); routing built and off (measured). Phase 5 compares against the Phase 4 baseline.
-Phase 4 is judged against the Phase 3 baseline (`EVAL_RESULTS.md`, judge-v2; refusals 5 + 1 truncation).
+**Phase 4 approved 2026-11-01 (cache on at 0.95 with word check; routing off, measured). Phase 5 (GraphRAG + hybrid):**
+**pre-registered 2026-11-01 (EVAL_RESULTS), awaiting review; no code yet.** Judged against the Phase 4 baseline.
 
 Eval budget (Groq free tier, per model: 8,000 tokens/min AND 200,000 tokens/day, rolling 24 h, not in headers):
 generator ~2.5k tokens x 100 answers = ~250k; judge ~2.75k x ~85 answered = ~234k. Both exceed 200k, so
