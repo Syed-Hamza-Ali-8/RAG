@@ -360,14 +360,19 @@ async def evaluate_item(
         tenant_id = auth.tenant_id
         query_vec = await app_state.embedder.embed_query(item["question"])
         # Retrieve exactly as the API does (Phase 5: vector or hybrid, from settings).
-        if settings.retrieval_mode == "hybrid":
+        if settings.retrieval_mode in ("hybrid", "hybrid_graph"):
             chunks = await hybrid_search(
                 conn,
                 acl_filter=auth.acl(),
                 question=item["question"],
                 query_embedding=query_vec,
                 top_k=RETRIEVE_K,
-                config=HybridConfig(rrf_k=settings.hybrid_rrf_k, depth=settings.hybrid_depth),
+                config=HybridConfig(
+                    rrf_k=settings.hybrid_rrf_k,
+                    depth=settings.hybrid_depth,
+                    graph=settings.retrieval_mode == "hybrid_graph",
+                    graph_depth=settings.graph_depth,
+                ),
             )
         else:
             chunks = await vector_search(
@@ -443,9 +448,15 @@ def budget_check(used: int, per_call: float, calls: int, limit: int) -> tuple[in
 
 
 async def tokens_used_24h(conn: asyncpg.Connection, model: str) -> int:
+    """The model's tokens in the provider's rolling 24 h window, as this stack logged them: queries and judge
+    calls (query_log) and entity extraction (graph_extraction, Phase 5)."""
     used = await conn.fetchval(
-        "SELECT coalesce(sum(prompt_tokens + completion_tokens), 0) FROM query_log "
-        "WHERE model_used = $1 AND ts > now() - interval '24 hours'",
+        "SELECT coalesce(sum(t), 0) FROM ("
+        " SELECT prompt_tokens + completion_tokens AS t FROM query_log"
+        " WHERE model_used = $1 AND ts > now() - interval '24 hours'"
+        " UNION ALL"
+        " SELECT prompt_tokens + completion_tokens FROM graph_extraction"
+        " WHERE model_used = $1 AND created_at > now() - interval '24 hours') u",
         model,
     )
     return int(used)
@@ -516,7 +527,7 @@ async def preflight(
 
 
 def _hybrid_note(meta: dict[str, Any]) -> str:
-    if meta.get("retrieval_mode") != "hybrid":
+    if meta.get("retrieval_mode") not in ("hybrid", "hybrid_graph"):
         return ""
     return f" (vector + FTS, RRF k={meta.get('hybrid_rrf_k')}, top {meta.get('hybrid_depth')} per path)"
 
@@ -783,8 +794,9 @@ async def run(
             else None,
             "cache_live_entries_at_start": live_cache_entries,
             "retrieval_mode": settings.retrieval_mode,
-            "hybrid_rrf_k": settings.hybrid_rrf_k if settings.retrieval_mode == "hybrid" else None,
-            "hybrid_depth": settings.hybrid_depth if settings.retrieval_mode == "hybrid" else None,
+            "hybrid_rrf_k": settings.hybrid_rrf_k if settings.retrieval_mode != "vector" else None,
+            "hybrid_depth": settings.hybrid_depth if settings.retrieval_mode != "vector" else None,
+            "graph_depth": settings.graph_depth if settings.retrieval_mode == "hybrid_graph" else None,
             "retrieve_k": RETRIEVE_K,
             "delay_ms": int(delay_s * 1000),
             "started_utc": session_started,

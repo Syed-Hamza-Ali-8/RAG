@@ -10,6 +10,7 @@ from uuid import UUID
 
 import asyncpg
 
+from gateway.retrieval.graph import graph_search
 from gateway.retrieval.keyword import keyword_search
 from gateway.retrieval.vector import RetrievedChunk, vector_search
 from gateway.security import acl
@@ -19,6 +20,9 @@ from gateway.security import acl
 class HybridConfig:
     rrf_k: int = 60
     depth: int = 20  # candidates each path contributes
+    graph: bool = False  # Phase 5 M2: the graph path as a third RRF input
+    graph_depth: int = 2  # walk depth cap (correction M)
+    graph_seeds: int = 6  # the fused vector+keyword top-n whose entities seed the walk
 
 
 def rrf(rankings: Sequence[Sequence[UUID]], k: int) -> list[UUID]:
@@ -48,5 +52,17 @@ async def hybrid_search(
         conn, acl_filter=acl_filter, question=question, query_embedding=query_embedding, top_k=depth
     )
     by_id = {c.chunk_id: c for c in (*vec, *kw)}
-    fused = rrf([[c.chunk_id for c in vec], [c.chunk_id for c in kw]], config.rrf_k)
+    rankings = [[c.chunk_id for c in vec], [c.chunk_id for c in kw]]
+    fused = rrf(rankings, config.rrf_k)
+    if config.graph:
+        walked = await graph_search(
+            conn,
+            acl_filter=acl_filter,
+            seed_chunk_ids=fused[: config.graph_seeds],
+            query_embedding=query_embedding,
+            max_depth=config.graph_depth,
+            top_k=depth,
+        )
+        by_id.update({c.chunk_id: c for c in walked})
+        fused = rrf([*rankings, [c.chunk_id for c in walked]], config.rrf_k)
     return [by_id[i] for i in fused[:top_k]]

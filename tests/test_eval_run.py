@@ -386,3 +386,40 @@ def test_comparison_defaults_to_the_latest_phase_baseline(tmp_path: Path) -> Non
     assert comparison_target(None, tmp_path) == tmp_path / "phase-10.json"  # numeric, not lexical
     explicit = tmp_path / "some_run.json"
     assert comparison_target(explicit, tmp_path) == explicit
+
+
+async def test_budget_counts_extraction_tokens_too(pool: asyncpg.Pool) -> None:
+    from run_eval import tokens_used_24h
+
+    async with pool.acquire() as conn:
+        tid = await conn.fetchval(
+            "INSERT INTO tenants (slug, name) VALUES ('budgetco', 'B') "
+            "ON CONFLICT (slug) DO UPDATE SET name = 'B' RETURNING id"
+        )
+        doc = await conn.fetchval(
+            "INSERT INTO documents (tenant_id, slug, title) VALUES ($1, $2, 'D') RETURNING id",
+            tid,
+            f"d-{tid}",
+        )
+        cid = await conn.fetchval(
+            "INSERT INTO chunks (tenant_id, document_id, ordinal, content, token_count, embedding) "
+            "VALUES ($1, $2, 0, 'x', 1, $3) RETURNING id",
+            tid,
+            doc,
+            [1.0] + [0.0] * 383,
+        )
+        before = await tokens_used_24h(conn, "budget-model")
+        await conn.execute(
+            "INSERT INTO query_log (tenant_id, route_tier, model_used, prompt_tokens, completion_tokens, "
+            "retrieval_ms, total_ms, outcome) "
+            "VALUES ($1, 'small', 'budget-model', 100, 10, 1, 1, 'answered')",
+            tid,
+        )
+        await conn.execute(
+            "INSERT INTO graph_extraction (tenant_id, chunk_id, model_used, prompt_version, prompt_tokens, "
+            "completion_tokens, outcome) VALUES ($1, $2, 'budget-model', 'extract-v1', 1000, 500, 'ok')",
+            tid,
+            cid,
+        )
+        assert await tokens_used_24h(conn, "budget-model") - before == 1610
+        await conn.execute("DELETE FROM tenants WHERE id = $1", tid)

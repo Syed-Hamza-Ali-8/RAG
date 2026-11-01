@@ -50,9 +50,14 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 6
     # Phase 5: "vector" (Phases 1-4) or "hybrid" (vector + Postgres FTS fused with RRF). RRF constants are
     # fixed by the Phase 5 pre-registration; not tuned on the golden set.
-    retrieval_mode: Literal["vector", "hybrid"] = "vector"
+    retrieval_mode: Literal["vector", "hybrid", "hybrid_graph"] = "vector"
     hybrid_rrf_k: int = 60
     hybrid_depth: int = 20
+    graph_depth: int = 2
+    # Entity/relation extraction (Phase 5): an explicit tier, offline ingestion only; never switched at
+    # runtime.
+    extraction_tier: Tier = "small"
+    extraction_max_completion_tokens: int = 2000
 
     # LLM. The tier is an explicit choice; there is no runtime fallback between tiers.
     llm_tier: Tier

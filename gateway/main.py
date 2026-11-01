@@ -71,8 +71,13 @@ def create_app(
             app.state.llms = llms
             app.state.router = Router(s.routing_threshold) if s.routing_enabled else None
             app.state.hybrid = (
-                HybridConfig(rrf_k=s.hybrid_rrf_k, depth=s.hybrid_depth)
-                if s.retrieval_mode == "hybrid"
+                HybridConfig(
+                    rrf_k=s.hybrid_rrf_k,
+                    depth=s.hybrid_depth,
+                    graph=s.retrieval_mode == "hybrid_graph",
+                    graph_depth=s.graph_depth,
+                )
+                if s.retrieval_mode in ("hybrid", "hybrid_graph")
                 else None
             )
             app.state.prices = {tier: price_for(s, x.tier) for tier, x in llms.items()}

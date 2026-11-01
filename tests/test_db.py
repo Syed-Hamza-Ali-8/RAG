@@ -17,6 +17,7 @@ async def test_all_migrations_applied_and_rerun_is_noop(pool: asyncpg.Pool) -> N
         "001_init",
         "002_audit_log",
         "003_cache",
+        "004_graph",
         "005_metrics",
         "006_query_log_answer",
         "007_query_log_prompt_version",
@@ -29,9 +30,19 @@ async def test_all_migrations_applied_and_rerun_is_noop(pool: asyncpg.Pool) -> N
 
 async def test_phase4_tables_exist_and_later_phase_tables_do_not(pool: asyncpg.Pool) -> None:
     async with pool.acquire() as conn:
-        for table in ("tenants", "users", "documents", "chunks", "query_log", "audit_log", "semantic_cache"):
+        for table in (
+            "tenants",
+            "users",
+            "documents",
+            "chunks",
+            "query_log",
+            "audit_log",
+            "semantic_cache",
+            "entities",
+            "relations",
+        ):
             assert await conn.fetchval("SELECT to_regclass($1)", table) is not None
-        for table in ("entities", "relations", "chunk_acl"):
+        for table in ("chunk_acl",):
             assert await conn.fetchval("SELECT to_regclass($1)", table) is None
 
 
