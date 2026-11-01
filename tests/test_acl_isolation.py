@@ -85,15 +85,14 @@ def acl_disabled(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
         monkeypatch.setattr(acl, "acl_predicate", _no_acl)
 
 
-@pytest.fixture(scope="module")
-async def apps(
-    settings: Settings, corpus: dict[str, UUID], embedder: Embedder
-) -> AsyncIterator[dict[str, Any]]:
+@asynccontextmanager
+async def _apps(settings: Settings, embedder: Embedder, mode: str) -> AsyncIterator[dict[str, Any]]:
     """Two apps over the same database: one with the leaky model, one with the refusing model."""
+    s = settings.model_copy(update={"retrieval_mode": mode})
     leaky, refusing = LeakyLLM(), RefusingLLM()
     leaky_app, refusing_app = (
-        create_app(settings, llm=leaky, embedder=embedder),
-        create_app(settings, llm=refusing, embedder=embedder),
+        create_app(s, llm=leaky, embedder=embedder),
+        create_app(s, llm=refusing, embedder=embedder),
     )
     async with (
         leaky_app.router.lifespan_context(leaky_app),
@@ -102,6 +101,24 @@ async def apps(
         httpx.AsyncClient(transport=httpx.ASGITransport(app=refusing_app), base_url="http://t") as rc,
     ):
         yield {"leaky": (lc, leaky), "refusing": (rc, refusing)}
+
+
+@pytest.fixture(scope="module", params=["vector", "hybrid"])
+async def apps(
+    request: pytest.FixtureRequest, settings: Settings, corpus: dict[str, UUID], embedder: Embedder
+) -> AsyncIterator[dict[str, Any]]:
+    """P1-P4 and the rejection probes run against every retrieval mode: each path filters ACLs itself."""
+    async with _apps(settings, embedder, request.param) as a:
+        yield a
+
+
+@pytest.fixture(scope="module")
+async def vector_apps(
+    settings: Settings, corpus: dict[str, UUID], embedder: Embedder
+) -> AsyncIterator[dict[str, Any]]:
+    """The liveness (mutation) test: probe liveness was established for the vector top 10."""
+    async with _apps(settings, embedder, "vector") as a:
+        yield a
 
 
 async def _user(conn: asyncpg.Connection, tenant: str, email: str) -> asyncpg.Record:
@@ -312,13 +329,13 @@ def _mutant_for(probe: dict[str, Any]) -> Callable[[str, int], str]:
 @pytest.mark.parametrize("probe", LEAK_PROBES, ids=[p["id"] for p in LEAK_PROBES])
 async def test_every_probe_leaks_without_the_predicate(
     probe: dict[str, Any],
-    apps: dict[str, Any],
+    vector_apps: dict[str, Any],
     pool: asyncpg.Pool,
     settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(acl, "acl_predicate", _mutant_for(probe))
-    client, _ = apps["leaky"]
+    client, _ = vector_apps["leaky"]
     r, _, _ = await ask_as(client, pool, settings, probe, probe["question"])
     answer = r.json()["answer"].lower()
     assert any(s.lower() in answer for s in probe["forbidden_strings"]), (

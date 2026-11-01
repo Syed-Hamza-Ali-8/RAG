@@ -19,6 +19,7 @@ from gateway.llm.prompts import PROMPT_VERSION, REFUSAL_MESSAGE, build_messages,
 from gateway.llm.provider import LLM
 from gateway.models.query import Citation, QueryResponse, Timings
 from gateway.query_log import QueryLogEntry, write_query_log
+from gateway.retrieval.hybrid import HybridConfig, hybrid_search
 from gateway.retrieval.vector import denied_count, readable_count, vector_search
 from gateway.routing.classifier import complexity
 from gateway.routing.policy import Price, Router, shadow_cost
@@ -139,6 +140,7 @@ async def answer_query(
     router: Router | None = None,
     llms: Mapping[str, LLM] | None = None,
     prices: Mapping[str, Price | None] | None = None,
+    hybrid: HybridConfig | None = None,
 ) -> QueryResponse:
     """`llm` answers every query unless `router` is set; then each query goes to `llms[tier]` for the tier
     its complexity score selects. `prices` (per tier) give the shadow cost; a missing price → unknown."""
@@ -155,7 +157,17 @@ async def answer_query(
             lookup_ms = _ms(lookup_started)
             if hit is not None:
                 return await _serve_cached(pool, llm, auth, question, hit, started, lookup_ms)
-        chunks = await vector_search(conn, acl_filter=acl_filter, query_embedding=query_vec, top_k=top_k)
+        if hybrid is not None:
+            chunks = await hybrid_search(
+                conn,
+                acl_filter=acl_filter,
+                question=question,
+                query_embedding=query_vec,
+                top_k=top_k,
+                config=hybrid,
+            )
+        else:
+            chunks = await vector_search(conn, acl_filter=acl_filter, query_embedding=query_vec, top_k=top_k)
         denied = await denied_count(conn, acl_filter=acl_filter, query_embedding=query_vec, top_k=top_k)
     retrieval_ms = _ms(started)
 

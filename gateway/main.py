@@ -25,6 +25,7 @@ from gateway.errors import (
 )
 from gateway.ingest.embedder import Embedder
 from gateway.llm.provider import LLM, OpenAICompatibleLLM
+from gateway.retrieval.hybrid import HybridConfig
 from gateway.routing.policy import Router, price_for
 
 log = logging.getLogger(__name__)
@@ -69,6 +70,11 @@ def create_app(
             app.state.llm = built_llm
             app.state.llms = llms
             app.state.router = Router(s.routing_threshold) if s.routing_enabled else None
+            app.state.hybrid = (
+                HybridConfig(rrf_k=s.hybrid_rrf_k, depth=s.hybrid_depth)
+                if s.retrieval_mode == "hybrid"
+                else None
+            )
             app.state.prices = {tier: price_for(s, x.tier) for tier, x in llms.items()}
             app.state.cache = (
                 CacheConfig.from_patterns(

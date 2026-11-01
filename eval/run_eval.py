@@ -38,6 +38,7 @@ from gateway.llm.prompts import PROMPT_VERSION
 from gateway.llm.provider import Completion, OpenAICompatibleLLM
 from gateway.main import create_app
 from gateway.query_log import QueryLogEntry, write_query_log
+from gateway.retrieval.hybrid import HybridConfig, hybrid_search
 from gateway.retrieval.vector import RetrievedChunk, vector_search
 from gateway.security.tokens import issue_token
 from gateway.stack import StackNotReady, check_stack, describe
@@ -358,7 +359,20 @@ async def evaluate_item(
         auth = await auth_for_email(conn, item["tenant"], item["as_user"])
         tenant_id = auth.tenant_id
         query_vec = await app_state.embedder.embed_query(item["question"])
-        chunks = await vector_search(conn, acl_filter=auth.acl(), query_embedding=query_vec, top_k=RETRIEVE_K)
+        # Retrieve exactly as the API does (Phase 5: vector or hybrid, from settings).
+        if settings.retrieval_mode == "hybrid":
+            chunks = await hybrid_search(
+                conn,
+                acl_filter=auth.acl(),
+                question=item["question"],
+                query_embedding=query_vec,
+                top_k=RETRIEVE_K,
+                config=HybridConfig(rrf_k=settings.hybrid_rrf_k, depth=settings.hybrid_depth),
+            )
+        else:
+            chunks = await vector_search(
+                conn, acl_filter=auth.acl(), query_embedding=query_vec, top_k=RETRIEVE_K
+            )
     ranked = [gid(c) for c in chunks]
     record["retrieved"] = ranked
     if item["type"] != "unanswerable":
@@ -501,6 +515,12 @@ async def preflight(
     return problems
 
 
+def _hybrid_note(meta: dict[str, Any]) -> str:
+    if meta.get("retrieval_mode") != "hybrid":
+        return ""
+    return f" (vector + FTS, RRF k={meta.get('hybrid_rrf_k')}, top {meta.get('hybrid_depth')} per path)"
+
+
 def write_baseline_section(label: str, result: dict[str, Any], baseline_file: Path) -> None:
     meta, agg = result["meta"], result["aggregate"]
     r, g = agg["retrieval"], agg["generation"]
@@ -518,7 +538,8 @@ def write_baseline_section(label: str, result: dict[str, Any], baseline_file: Pa
         f"- Generator: `{meta['generator_model']}` (tier `{meta['llm_tier']}`), "
         f"prompt `{meta['prompt_version']}`; judge: `{meta['judge_model']}` (tier `{meta['judge_tier']}`), "
         f"prompt `{meta['judge_prompt_version']}`",
-        "- Retrieval: vector-only, ACL-filtered in SQL as each item's seeded `as_user`; "
+        f"- Retrieval: {meta.get('retrieval_mode', 'vector')}{_hybrid_note(meta)}"
+        ", ACL-filtered in SQL as each item's seeded `as_user`; "
         f"answers use top {meta['top_k']}; metrics at top {meta['retrieve_k']}",
         f"- Golden set hash `{meta['golden_hash']}`; corpus {meta['corpus_chunks']} chunks; "
         "commits "
@@ -618,6 +639,7 @@ RESUME_MUST_MATCH = (
     "judge_prompt_version",
     "top_k",
     "retrieve_k",
+    "retrieval_mode",
 )
 
 
@@ -756,6 +778,9 @@ async def run(
             if settings.cache_enabled
             else None,
             "cache_live_entries_at_start": live_cache_entries,
+            "retrieval_mode": settings.retrieval_mode,
+            "hybrid_rrf_k": settings.hybrid_rrf_k if settings.retrieval_mode == "hybrid" else None,
+            "hybrid_depth": settings.hybrid_depth if settings.retrieval_mode == "hybrid" else None,
             "retrieve_k": RETRIEVE_K,
             "delay_ms": int(delay_s * 1000),
             "started_utc": session_started,

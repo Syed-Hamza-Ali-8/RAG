@@ -23,6 +23,7 @@ async def test_all_migrations_applied_and_rerun_is_noop(pool: asyncpg.Pool) -> N
         "008_query_log_purpose",
         "009_query_log_outcome",
         "010_query_log_cache_lookup",
+        "011_chunks_fts",
     ]
 
 

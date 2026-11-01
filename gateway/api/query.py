@@ -25,4 +25,5 @@ async def query(
         router=state.router,
         llms=state.llms,
         prices=state.prices,
+        hybrid=state.hybrid,
     )

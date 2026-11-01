@@ -48,6 +48,11 @@ class Settings(BaseSettings):
 
     # Retrieval
     retrieval_top_k: int = 6
+    # Phase 5: "vector" (Phases 1-4) or "hybrid" (vector + Postgres FTS fused with RRF). RRF constants are
+    # fixed by the Phase 5 pre-registration; not tuned on the golden set.
+    retrieval_mode: Literal["vector", "hybrid"] = "vector"
+    hybrid_rrf_k: int = 60
+    hybrid_depth: int = 20
 
     # LLM. The tier is an explicit choice; there is no runtime fallback between tiers.
     llm_tier: Tier
