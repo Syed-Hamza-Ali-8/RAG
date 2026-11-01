@@ -695,6 +695,75 @@ that item's Run A shadow cost and model latency. Predictions:
 - Shadow cost saved: the hit requests' share of the no-cache cost, close to the hit rate (per-query costs are
   similar).
 
+## Golden set baseline — Phase 4
+
+Full run of all 100 golden-set items, 2026-11-01T10:16:51+00:00, by `uv run python eval/run_eval.py --baseline "Phase 4"`. Results: `eval/baselines/phase-4.json`.
+
+- Generator: `openai/gpt-oss-20b` (tier `small`), prompt `answer-v2`; judge: `openai/gpt-oss-120b` (tier `large`), prompt `judge-v2`
+- Retrieval: vector-only, ACL-filtered in SQL as each item's seeded `as_user`; answers use top 6; metrics at top 10
+- Golden set hash `d58769e8532dd8e0`; corpus 251 chunks; commits `93811d2`, `93811d2-dirty`
+
+| Retrieval (answerable items) | n | recall@5 | recall@6 | recall@10 | all-hops@10 | MRR | nDCG@10 |
+|---|---|---|---|---|---|---|---|
+| all_answerable | 85 | 84.1% | 86.5% | 92.9% | 87.1% | 0.700 | 0.728 |
+| single_hop | 50 | 88.0% | 92.0% | 98.0% | 98.0% | 0.679 | 0.752 |
+| buried_fact | 20 | 90.0% | 90.0% | 95.0% | 95.0% | 0.673 | 0.740 |
+| multi_hop | 25 | 70.0% | 70.0% | 80.0% | 60.0% | 0.748 | 0.667 |
+| near_miss | 10 | 100.0% | 100.0% | 100.0% | 100.0% | 0.683 | 0.762 |
+
+| Generation | rate | count / n |
+|---|---|---|
+| Refused unanswerable (hallucination guard) | 100.0% | 15 / 15 |
+| Refused answerable (false refusals; truncations excluded) | 4.8% | 4 / 84 |
+| Truncated at the completion limit (neither answered nor refused) | 1.0% | 1 / 100 |
+| Faithful (judge, answered items) | 98.8% | 79 / 80 |
+| Relevant (judge, answered items) | 100.0% | 80 / 80 |
+| Citations supported (judge-v2, answered items) | 92.5% | 74 / 80 |
+| Correct (judge; refusals and truncations count as not correct) | 88.2% | 75 / 85 |
+| Near-miss pairs with both answers correct | 100.0% | 5 / 5 |
+
+Judge errors: 0. Hallucinated on unanswerable: none. Refused answerable: ['q106', 'q052', 'q064', 'q066']. Truncated: ['q054'].
+
+### Phase 4 Run A against its pre-registration (completed 2026-11-01)
+
+Two sessions (2026-10-30: 47 items, stopped by the budget day plan; 2026-11-01: 53 items). Day 2 records
+commit `93811d2-dirty` because the progress-line display was fixed in the working tree while the run was in
+flight; the running process had already loaded `93811d2`, which is the code that ran.
+
+- **Held: cache hits exactly 0.** 98 queries consulted the cache (q056 and q074 bypassed), 0 hits; the cache
+  held 0 live entries at the start.
+- **Held: retrieval identical to Phase 3,** for every item, not only in aggregate: all 100 top-10 rankings match.
+- **Held: correctness within 3 items.** 75/85 correct against Phase 3's 77/85 (Δ −2). Lost: q043 and q069
+  (each omits a qualifier the reference includes: judge-v2's known strictness) and q054 (truncated at the
+  1,000-token limit; answered in Phase 3). Gained: q109. Unanswerable refusals 15/15, no hallucination; near-miss
+  pairs 5/5. None of these touches the cache: it answered nothing, and retrieval is identical.
+- **New behaviour, not a correctness change:** q051 and q058 moved from refusing to **partial answers**: each
+  answers the hop it can see and says the other is not in the sources. Neither is correct in either phase. q051's
+  partial answer cites a chunk for "the sources give no end date" that does not support it: the run's one
+  unfaithful answer (faithful 79/80). The completion limit rose from 700 to 1,000 tokens between Phase 3 and
+  Phase 4; whether that extra room is what turns refusals into partial answers is not established.
+- **Missed, slightly: lookup cost.** Predicted ~1 ms p50 from the sweep; measured **2 ms p50, 4 ms p95** on the
+  miss path. Still negligible beside the model.
+- **Item 3 (faithfulness, shipped configuration, 100 items): 79/80 faithful (98.75%), 80/80 relevant,
+  citations supported 74/80 (92.5%).** The always-large comparison is the subset's (routing off 2 items better);
+  the full-set gap was accepted and closed.
+- **Item 4 vs the Phase 2 baseline run** (each run's own `query_log` rows; Phase 2 cost recomputed from its
+  logged tokens at the same list prices):
+
+| | Phase 2 | Phase 4 | Delta |
+|---|---|---|---|
+| Shadow cost per query | USD 0.000238 | USD 0.000226 | **−5.1%** (within the predicted ±10%) |
+| Total latency p95 | 2,701 ms | 1,688 ms | **−1,013 ms** |
+| Total latency p50 | 1,245 ms | 847 ms | −398 ms |
+| Model latency p95 | 2,577 ms | 1,641 ms | −936 ms |
+| Retrieval p50 / p95 | 38 / 291 ms | 31 / 69 ms | |
+| Prompt tokens p50 | 2,434 | 2,380 | |
+
+  **The latency drop is the model's, not the cache's**: Run A had no hits, and the p95 fall is almost entirely
+  model time (Groq-side variance between runs a week apart), so it is not a Phase 4 gain and is not claimed as
+  one. The small cost drop follows the slightly shorter prompts since Phase 3's ACL filtering. The logged shadow
+  cost (`query_log.est_cost_usd`) matches the recomputed figure exactly (USD 0.022596 for the 100 queries).
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the

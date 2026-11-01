@@ -800,6 +800,8 @@ async def run(
                     else (
                         " refused"
                         if record.get("refused")
+                        else " truncated"
+                        if record.get("truncated")
                         else f" judge={'error' if record.get('judge_error') else 'ok'}"
                     )
                 )
