@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from gateway.errors import ConfigError
 
 Tier = Literal["small", "large", "local"]
+ReasoningEffort = Literal["low", "medium", "high"]
 
 
 class ProviderConfig(BaseModel):
@@ -58,6 +59,9 @@ class Settings(BaseSettings):
     # runtime.
     extraction_tier: Tier = "small"
     extraction_max_completion_tokens: int = 2000
+    # gpt-oss counts reasoning inside the completion budget; at the default effort extraction truncated
+    # (EVAL_RESULTS.md, M2 probe deviation).
+    extraction_reasoning_effort: ReasoningEffort = "low"
 
     # LLM. The tier is an explicit choice; there is no runtime fallback between tiers.
     llm_tier: Tier
@@ -80,6 +84,8 @@ class Settings(BaseSettings):
     llm_network_backoff_max_s: float = 30.0
     llm_max_completion_tokens: int = 1000
     llm_temperature: float = 0.0
+    # Sent only when set (extraction sets it); answers and the judge use the provider default.
+    llm_reasoning_effort: ReasoningEffort | None = None
 
     # Eval / benchmark pacing to stay under free-tier rate limits (spec §6.2)
     eval_request_delay_ms: int = 30000

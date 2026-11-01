@@ -978,6 +978,42 @@ measurement.**
   provenance chunk the caller may read (correction T); candidates are the provenance chunks reached, ordered by
   depth then by number of supporting relations, top 20 into RRF as a third list (k = 60).
 
+### M2 probe: deviation from the pre-registered extraction setup (recorded 2026-11-02, before further extraction)
+
+**What happened.** The first three probe chunks (eng-postmortem-2026-03-atlas-outage #0, #11, #13) all ended
+`truncated` at the pre-registered 2,000-token completion limit (prompt 498-616 tokens, completion 2,000 each,
+about 7.7k tokens spent, no relations stored). Extraction was stopped rather than adjusted silently.
+
+**Diagnostic, one call** (`eval/extract_diag.py`, log `~/gateway_runs/extract_diag_20261102.log`, logged in
+`graph_extraction` as `extract-v1-diag`): chunk #0, same model, prompt and temperature (0.0), limit 8,000.
+
+| finish | prompt | completion | of which reasoning | of which content | content parses |
+|---|---|---|---|---|---|
+| stop | 498 | 1,351 | **1,079 (80%)** | 272 (1,091 chars) | 9 entities, 8 relations |
+
+**Finding, worth stating on its own:** on a reasoning model (gpt-oss-20b on Groq), **the reasoning tokens are
+counted inside `completion_tokens` and consumed the completion budget**; the JSON itself is small (~270 tokens).
+Reasoning length also varies between calls at temperature 0: the same chunk ran past 2,000 tokens on 2026-11-01
+and finished at 1,351 here, so a limit that fits one call does not reliably fit the next. Anyone building
+extraction on a reasoning model should budget for reasoning, not for the output schema.
+
+**Decision, by the rule fixed with the user before the diagnostic** (reasoning dominates and the JSON is small →
+lower the reasoning effort at the same limit; JSON large → raise the limit; both large → fewer entity types or
+split chunks): **`reasoning_effort="low"` on extraction calls, completion limit unchanged at 2,000.** Groq documents
+`reasoning_effort` (`low`/`medium`/`high`) for GPT-OSS 20B and 120B (console.groq.com/docs/reasoning, read
+2026-11-02); the installed openai SDK (3.35.1, `AsyncCompletions.create`) accepts the parameter.
+
+- The prompt text is unchanged; the setup is recorded as prompt version **`extract-v1-low`** (extract-v1 text,
+  reasoning effort low) so no row is confused with the pre-registered setup. The three truncated chunks have no
+  `ok` row and are re-extracted under it.
+- Everything else in the pre-registration (model, entity types, resolution, graph path, decision rule,
+  limitation) stands.
+- **Stop rule for the new setup:** if any of the first five chunks truncates or fails to parse, extraction stops
+  and the result comes back for a decision; it is not adjusted again in place.
+- Low reasoning effort may extract fewer or worse relations than the default. That is a cost of this deviation:
+  if the probe returns 0, the write-up names reduced reasoning as a second reason (beside the partial corpus) why
+  the 0 is weaker evidence.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the

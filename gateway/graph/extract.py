@@ -20,7 +20,8 @@ from openai.types.chat import ChatCompletionMessageParam
 from gateway.errors import LLMProviderError, TruncatedCompletion
 from gateway.llm.provider import LLM
 
-EXTRACT_PROMPT_VERSION = "extract-v1"
+# extract-v1 prompt text, called with reasoning_effort=low (EVAL_RESULTS.md, M2 probe deviation).
+EXTRACT_PROMPT_VERSION = "extract-v1-low"
 ENTITY_TYPES = ("PERSON", "ORG", "CONTRACT", "POLICY", "DATE", "PRODUCT")
 
 _SYSTEM = f"""You extract a knowledge graph from one passage of a company document.

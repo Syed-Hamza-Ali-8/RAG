@@ -1,7 +1,7 @@
 """OpenAI-SDK clients per tier. The tier is chosen in .env; there is no runtime fallback."""
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
@@ -46,12 +46,16 @@ class OpenAICompatibleLLM:
 
     async def complete(self, messages: list[ChatCompletionMessageParam]) -> Completion:
         s = self._settings
+        extra: dict[str, Any] = (
+            {"reasoning_effort": s.llm_reasoning_effort} if s.llm_reasoning_effort is not None else {}
+        )
         response = await with_retry(
             lambda: self._client.chat.completions.create(
                 model=self.model_id,
                 messages=messages,
                 temperature=s.llm_temperature,
                 max_completion_tokens=s.llm_max_completion_tokens,
+                **extra,
             ),
             max_attempts=s.llm_max_attempts,
             base_delay_s=s.llm_backoff_base_s,

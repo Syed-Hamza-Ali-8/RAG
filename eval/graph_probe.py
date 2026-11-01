@@ -44,7 +44,12 @@ class DocStats:
 async def extract(settings: Settings) -> int:
     rows = json.loads(SUBSET.read_text(encoding="utf-8"))
     llm = OpenAICompatibleLLM(
-        settings.model_copy(update={"llm_max_completion_tokens": settings.extraction_max_completion_tokens}),
+        settings.model_copy(
+            update={
+                "llm_max_completion_tokens": settings.extraction_max_completion_tokens,
+                "llm_reasoning_effort": settings.extraction_reasoning_effort,
+            }
+        ),
         settings.extraction_tier,
     )
     pool = await create_pool(settings.database_dsn)
