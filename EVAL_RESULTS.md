@@ -317,6 +317,21 @@ partial answers of this kind (q051, q058) become more or less common.
   doubling to a 30 s cap (about two minutes of waiting), separate from the 429/5xx budget, so the 10 s
   blips that stopped the baseline and the calibration on 2026-10-26 no longer stop a run.
 
+## Phase 3 gate: evidence (measured 2026-10-28; recorded here 2026-11-01)
+
+Reported at the gate and in commit messages (`7f32d3f`) but not written here at the time; recorded now so every
+summary figure traces to this file.
+- **Isolation suite, zero leaks:** `tests/test_acl_isolation.py` and `tests/test_admin_isolation.py` 151/151 passed
+  (43 retrieval probes, 19 admin-surface probes, each checked under P1-P4).
+- **Removing the ACL predicate makes the suite fail:** with `--acl-disabled`, all 39 leak probes fail (85 other tests,
+  which do not depend on the predicate, pass); an always-on mutation test re-proves each probe leaks without it.
+- **Audit row for every query, with denied-chunk counts:** the Phase 3 baseline's 101 generation queries produced 101
+  `audit_log` rows: none missing, none duplicated, no null `denied_count`, no empty `retrieved_ids`; 60 rows record
+  denied chunks (1.86 per query on average).
+- **Overlapping titles, cross-tenant queries return nothing:** 11 document titles exist in both tenants; asking each,
+  in two phrasings, as six users (three per tenant) through the production ACL-filtered search at top-k 20: 132
+  queries, 2,640 chunks returned, 0 from the other tenant.
+
 ## A correct answer that should never have been possible (q052)
 
 q052 asks, as `finance@acme.example`: "Who is the business owner of the vendor that hosts Atlas, and
