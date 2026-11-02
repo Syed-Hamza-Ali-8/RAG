@@ -1068,6 +1068,31 @@ is ordered by depth and support, not by relevance to the question, and gets the 
 query-ranked lists. The full-corpus measurement separates the two; changing the graph list's ordering or weight
 would be a new deviation, pre-registered before it is measured.
 
+**Primary finding of the probe (user-worded, recorded 2026-11-02 before the full measurement):** the graph path
+surfaced 3 bridge items into the top 10 while pushing all-hops@6 down from 14/25 to 11/25 and MRR from 0.820 to
+0.597. The second hops landed at ranks 8, 10 and 10: inside the measured window, outside the six chunks the model
+reads. **A gain that does not reach the generator is not a gain.** It is the routing lesson from the other
+direction: measure the stage that binds.
+
+### M2 full measurement: reporting and planner expectations (fixed 2026-11-02, before the full measurement)
+
+- **Headline multi-hop number: all-hops@6** (what the generator sees), against M1's 14/25 and Phase 4's 11/25.
+  all-hops@10 is reported as a diagnostic only. This supersedes the earlier framing that put @10 first (user
+  decision, made after the probe and before any full-corpus number exists). The planner decision rule above keeps
+  its pre-registered measure (all-hops@10) so it is not re-cut after a result was seen; its outcome is reported
+  beside the @6 numbers for both variants.
+- **Planner expectation, quantified from the classifier alone (no retrieval outcomes):** on the 2026-10-29 score
+  distribution the highest single-hop score is 0.369 and the lowest multi-hop score 0.390, so with the gate at
+  0.38 **gated fusion should leave every single-hop and buried-fact item exactly at M1** (0 of 50 cross the gate)
+  and match always-fuse on all 25 multi-hop items. If so, the decision rule picks gated (always-fuse cannot catch
+  2 more multi-hop items than an identical set), and the always-fuse damage above is confined to the variant that
+  is not chosen. Caveat: those scores were computed with vector retrieval; the classifier reads cosine features,
+  which hybrid hits also carry, but the top-k set differs, so scores can shift. Every single-hop or buried item
+  that crosses the gate under hybrid is listed by name in the result.
+- **If the full corpus still shows the always-fuse damage**, a relevance-ordered graph list or a lower RRF weight
+  for it are candidate fixes; either is a new deviation, brought to the user and pre-registered before it is
+  built or measured.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
