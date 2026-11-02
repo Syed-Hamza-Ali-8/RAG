@@ -1020,6 +1020,54 @@ split chunks): **`reasoning_effort="low"` on extraction calls, completion limit 
   if the probe returns 0, the write-up names reduced reasoning as a second reason (beside the partial corpus) why
   the 0 is weaker evidence.
 
+### M2 feasibility probe: result (measured 2026-11-02)
+
+**Extraction** (`extract-v1-low`, gpt-oss-20b, completion limit 2,000; `~/gateway_runs/graph_probe_report_20261102c.log`):
+53 of 54 subset chunks in the graph, 192 entities, 289 relations, 68,978 tokens over 56 attempts (shadow cost about
+$0.015), no truncations.
+
+| JSON validity | ok | invalid_json | rate |
+|---|---|---|---|
+| first attempt (54 chunks) | 52 | 2 | **96.3%** |
+| after one retry (54 chunks) | 53 | 1 | **98.1%** |
+
+The two first-attempt failures were legal-sow-brightwater-health #14 (retry ok) and #4 (retry invalid; not in
+the graph). #4 is a q058 distractor, not a gold chunk; q058's gold chunks (brightwater #5, public-company-overview
+#0) were both extracted.
+
+**Measurement:** retrieval-only, `RETRIEVAL_MODE=hybrid_graph`, compared with M1 (`eval/phase5/m1_hybrid.json`);
+result `eval/phase5/m2_probe.json`, log `~/gateway_runs/m2_probe_measure_20261102.log`.
+
+| bridge item | M1 hop ranks | probe hop ranks | all-hops@10 | all-hops@6 |
+|---|---|---|---|---|
+| q051 | 1, — | 2, — | no | no |
+| q056 | 1, — | 1, 8 | **yes** | no |
+| q058 | 1, — | 1, 10 | **yes** | no |
+| q064 | 1, — | 3, 10 | **yes** | no |
+| q069 | 7, — | 7, — | no | no |
+
+**Decision rule: 3 of 5 resolve (q056, q058, q064), so the rule says extract the full corpus and run the real M2
+measurement.** The resolved second hops arrive at ranks 8, 10 and 10, just inside the bar; none reaches the top 6
+the model sees.
+
+**Recorded with the same prominence: the graph path, fused at equal RRF weight, damaged the top of the ranking.**
+
+| measure | M1 | probe |
+|---|---|---|
+| multi-hop all-hops@10 | 17/25 | 20/25 (gained q056, q058, q064, q075; lost q074) |
+| multi-hop all-hops@6 | 14/25 | **11/25** |
+| single-hop recall@6 | 0.980 | **0.920** (q008 rank 1→9, q105 2→10, q111 1→10) |
+| buried-fact recall@6 | 20/20 | **18/20** (q105, q111) |
+| all-answerable MRR | 0.820 | **0.597** |
+
+On the probe graph this breaks the pre-registered always-fuse single-hop limit (at most 1 item, no buried-fact
+loss) three times over. Part of it is a subset artifact: chunks outside the subset have no relations, so they can
+never appear in the graph list, and extracted neighbours that appear in all three lists outrank them (q111's gold
+chunk, sunridge-schools #2, is not in the subset and fell from rank 1 to 10). Part may be structural: the graph list
+is ordered by depth and support, not by relevance to the question, and gets the same RRF weight as the two
+query-ranked lists. The full-corpus measurement separates the two; changing the graph list's ordering or weight
+would be a new deviation, pre-registered before it is measured.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
