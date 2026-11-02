@@ -1010,6 +1010,12 @@ split chunks): **`reasoning_effort="low"` on extraction calls, completion limit 
   limitation) stands.
 - **Stop rule for the new setup:** if any of the first five chunks truncates or fails to parse, extraction stops
   and the result comes back for a decision; it is not adjusted again in place.
+- **Retries (user-approved 2026-11-02):** a chunk that fails gets exactly one retry. JSON validity is reported
+  for first attempts and after the retry separately.
+- **Implementation defect, fixed 2026-11-02:** `graph_probe.py` first counted "the first five" per run, so on the
+  resumed run it stopped on a failed *retry* (brightwater-health #4, attempt 33 of the setup), not on one of the
+  setup's first five attempts (all five were `ok`). The counter now counts the setup's attempts across runs, as
+  written above; the rule itself is unchanged.
 - Low reasoning effort may extract fewer or worse relations than the default. That is a cost of this deviation:
   if the probe returns 0, the write-up names reduced reasoning as a second reason (beside the partial corpus) why
   the 0 is weaker evidence.

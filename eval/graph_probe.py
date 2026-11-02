@@ -28,7 +28,10 @@ from gateway.routing.policy import price_for, shadow_cost
 from run_eval import BUDGET_MARGIN, require_stack, tokens_used_24h
 
 SUBSET = Path(__file__).resolve().parent / "phase5" / "graph_probe_subset.json"
-FIRST_N_STRICT = 5  # stop rule for extract-v1-low (EVAL_RESULTS.md, M2 probe deviation)
+# EVAL_RESULTS.md, M2 probe deviation: a non-ok outcome among the setup's first 5 attempts (across runs)
+# stops extraction; a failed chunk gets one retry, never a third draw.
+FIRST_N_STRICT = 5
+MAX_ATTEMPTS = 2
 EST_TOKENS_PER_CHUNK = 2000  # pre-registered estimate (1.5-2k); the live check uses logged tokens
 
 
@@ -69,12 +72,13 @@ async def extract(settings: Settings) -> int:
                 )
                 if c is None:
                     raise SystemExit(f"{row['tenant']}/{row['chunk']} is not in the corpus")
-                if await conn.fetchval(
-                    "SELECT 1 FROM graph_extraction "
-                    "WHERE chunk_id = $1 AND prompt_version = $2 AND outcome = 'ok'",
+                ok, attempts = await conn.fetchrow(
+                    "SELECT bool_or(outcome = 'ok'), count(*) FROM graph_extraction "
+                    "WHERE chunk_id = $1 AND prompt_version = $2",
                     c["id"],
                     EXTRACT_PROMPT_VERSION,
-                ):
+                )
+                if ok or attempts >= MAX_ATTEMPTS:
                     continue
                 used = await tokens_used_24h(conn, llm.model_id)
             if used + EST_TOKENS_PER_CHUNK * BUDGET_MARGIN > settings.llm_daily_token_limit:
@@ -91,7 +95,11 @@ async def extract(settings: Settings) -> int:
             done += outcome == "ok"
             failed += outcome != "ok"
             print(f"  [{n}/{len(rows)}] {row['tenant']}/{row['chunk']}: {outcome}", flush=True)
-            if outcome != "ok" and done + failed <= FIRST_N_STRICT:
+            async with pool.acquire() as conn:
+                setup_attempts = await conn.fetchval(
+                    "SELECT count(*) FROM graph_extraction WHERE prompt_version = $1", EXTRACT_PROMPT_VERSION
+                )
+            if outcome != "ok" and setup_attempts <= FIRST_N_STRICT:
                 print(f"STOPPED: {outcome} within the first {FIRST_N_STRICT} attempts (stop rule)")
                 return 2
             if outcome == "error":
