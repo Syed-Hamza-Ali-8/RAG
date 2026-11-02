@@ -103,7 +103,7 @@ async def _apps(settings: Settings, embedder: Embedder, mode: str) -> AsyncItera
         yield {"leaky": (lc, leaky), "refusing": (rc, refusing)}
 
 
-@pytest.fixture(scope="module", params=["vector", "hybrid", "hybrid_graph"])
+@pytest.fixture(scope="module", params=["vector", "hybrid", "hybrid_graph", "hybrid_graph_gated"])
 async def apps(
     request: pytest.FixtureRequest, settings: Settings, corpus: dict[str, UUID], embedder: Embedder
 ) -> AsyncIterator[dict[str, Any]]:

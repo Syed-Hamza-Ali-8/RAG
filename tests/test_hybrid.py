@@ -4,9 +4,10 @@ from uuid import UUID, uuid4
 
 import asyncpg
 
+from gateway.config import Settings
 from gateway.deps import auth_for_email
 from gateway.ingest.embedder import Embedder
-from gateway.retrieval.hybrid import HybridConfig, hybrid_search, rrf
+from gateway.retrieval.hybrid import HybridConfig, config_from, hybrid_search, rrf
 from gateway.retrieval.vector import vector_search
 
 A, B, C, D = (uuid4() for _ in range(4))
@@ -63,3 +64,58 @@ async def test_hybrid_lifts_a_rare_term_chunk_that_vector_ranks_low(
     gold = ("hr-leave-policy", 1)
     assert gold not in [(c.document_slug, c.ordinal) for c in v]
     assert gold in [(c.document_slug, c.ordinal) for c in h]
+
+
+async def test_gate_keeps_a_single_hop_question_off_the_graph_path(
+    pool: asyncpg.Pool, embedder: Embedder, corpus: dict[str, UUID]
+) -> None:
+    # A short single-hop question scores below the gate: the graph path does not run, and the result is
+    # exactly the vector+FTS result (gated fusion cannot change single-hop retrieval).
+    q = "What is Acme's annual leave entitlement?"
+    async with pool.acquire() as conn:
+        auth = await auth_for_email(conn, "acme", "employee@acme.example")
+        vec = await embedder.embed_query(q)
+        trace: dict[str, object] = {}
+        gated = await hybrid_search(
+            conn,
+            acl_filter=auth.acl(),
+            question=q,
+            query_embedding=vec,
+            top_k=6,
+            config=HybridConfig(graph=True, graph_gate=0.38),
+            trace=trace,
+        )
+        plain = await hybrid_search(
+            conn, acl_filter=auth.acl(), question=q, query_embedding=vec, top_k=6, config=HybridConfig()
+        )
+    assert trace["graph"] is False and float(trace["gate_score"]) < 0.38  # type: ignore[arg-type]
+    assert [c.chunk_id for c in gated] == [c.chunk_id for c in plain]
+
+
+async def test_gate_opens_for_a_multi_hop_question(
+    pool: asyncpg.Pool, embedder: Embedder, corpus: dict[str, UUID]
+) -> None:
+    q = "Which provider hosts Marlowe Retail Group's files, and what monthly availability does it commit to?"
+    async with pool.acquire() as conn:
+        auth = await auth_for_email(conn, "globex", "legal@globex.example")
+        trace: dict[str, object] = {}
+        await hybrid_search(
+            conn,
+            acl_filter=auth.acl(),
+            question=q,
+            query_embedding=await embedder.embed_query(q),
+            top_k=6,
+            config=HybridConfig(graph=True, graph_gate=0.38),
+            trace=trace,
+        )
+    assert trace["graph"] is True and float(trace["gate_score"]) >= 0.38  # type: ignore[arg-type]
+
+
+def test_config_from_maps_every_retrieval_mode(settings: Settings) -> None:
+    def cfg(mode: str) -> HybridConfig | None:
+        return config_from(settings.model_copy(update={"retrieval_mode": mode}))
+
+    assert cfg("vector") is None
+    assert cfg("hybrid") == HybridConfig(rrf_k=60, depth=20, graph=False, graph_gate=None)
+    assert cfg("hybrid_graph") == HybridConfig(graph=True, graph_gate=None)
+    assert cfg("hybrid_graph_gated") == HybridConfig(graph=True, graph_gate=0.38)

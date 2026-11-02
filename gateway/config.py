@@ -51,10 +51,13 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 6
     # Phase 5: "vector" (Phases 1-4) or "hybrid" (vector + Postgres FTS fused with RRF). RRF constants are
     # fixed by the Phase 5 pre-registration; not tuned on the golden set.
-    retrieval_mode: Literal["vector", "hybrid", "hybrid_graph"] = "vector"
+    # "hybrid_graph" fuses the graph path on every query (always-fuse); "hybrid_graph_gated" only when the
+    # complexity score of the vector+FTS top-k reaches graph_gate (the planner; EVAL_RESULTS.md addendum).
+    retrieval_mode: Literal["vector", "hybrid", "hybrid_graph", "hybrid_graph_gated"] = "vector"
     hybrid_rrf_k: int = 60
     hybrid_depth: int = 20
     graph_depth: int = 2
+    graph_gate: float = 0.38  # pre-registered: between top single-hop (0.369) and lowest multi-hop (0.390)
     # Entity/relation extraction (Phase 5): an explicit tier, offline ingestion only; never switched at
     # runtime.
     extraction_tier: Tier = "small"

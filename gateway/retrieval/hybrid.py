@@ -1,18 +1,22 @@
 """Hybrid retrieval (Phase 5, M1): vector and keyword paths fused with Reciprocal Rank Fusion.
 
-Each path is ACL-filtered in its own SQL; fusion only reorders what both already permitted. Constants fixed
-by the Phase 5 pre-registration, not tuned on the golden set: RRF k = 60, each path contributes its top 20.
+Each path is ACL-filtered in its own SQL; fusion only reorders what the paths already permitted.
+Constants fixed by the Phase 5 pre-registration, not tuned on the golden set: RRF k = 60, each path
+contributes its top 20.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 import asyncpg
 
+from gateway.config import Settings
 from gateway.retrieval.graph import graph_search
 from gateway.retrieval.keyword import keyword_search
 from gateway.retrieval.vector import RetrievedChunk, vector_search
+from gateway.routing.classifier import complexity
 from gateway.security import acl
 
 
@@ -23,6 +27,21 @@ class HybridConfig:
     graph: bool = False  # Phase 5 M2: the graph path as a third RRF input
     graph_depth: int = 2  # walk depth cap (correction M)
     graph_seeds: int = 6  # the fused vector+keyword top-n whose entities seed the walk
+    graph_gate: float | None = None  # None: always fuse; else walk only when the complexity score >= this
+
+
+def config_from(settings: Settings) -> HybridConfig | None:
+    """The retrieval mode in .env as a HybridConfig; None for vector-only retrieval."""
+    mode = settings.retrieval_mode
+    if mode == "vector":
+        return None
+    return HybridConfig(
+        rrf_k=settings.hybrid_rrf_k,
+        depth=settings.hybrid_depth,
+        graph=mode in ("hybrid_graph", "hybrid_graph_gated"),
+        graph_depth=settings.graph_depth,
+        graph_gate=settings.graph_gate if mode == "hybrid_graph_gated" else None,
+    )
 
 
 def rrf(rankings: Sequence[Sequence[UUID]], k: int) -> list[UUID]:
@@ -45,7 +64,9 @@ async def hybrid_search(
     query_embedding: list[float],
     top_k: int,
     config: HybridConfig,
+    trace: dict[str, Any] | None = None,
 ) -> list[RetrievedChunk]:
+    """`trace`, if given, receives the gate score (gated mode) and whether the graph path ran."""
     depth = max(config.depth, top_k)
     vec = await vector_search(conn, acl_filter=acl_filter, query_embedding=query_embedding, top_k=depth)
     kw = await keyword_search(
@@ -54,7 +75,16 @@ async def hybrid_search(
     by_id = {c.chunk_id: c for c in (*vec, *kw)}
     rankings = [[c.chunk_id for c in vec], [c.chunk_id for c in kw]]
     fused = rrf(rankings, config.rrf_k)
-    if config.graph:
+    walk = config.graph
+    if walk and config.graph_gate is not None:
+        # The router's own score, over the cosines of the vector+FTS top-k (keyword hits carry cosines too).
+        score = complexity(question, [by_id[i].score for i in fused[:top_k]]).score
+        walk = score >= config.graph_gate
+        if trace is not None:
+            trace["gate_score"] = score
+    if trace is not None:
+        trace["graph"] = walk
+    if walk:
         walked = await graph_search(
             conn,
             acl_filter=acl_filter,

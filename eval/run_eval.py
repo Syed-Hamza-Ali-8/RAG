@@ -38,7 +38,8 @@ from gateway.llm.prompts import PROMPT_VERSION
 from gateway.llm.provider import Completion, OpenAICompatibleLLM
 from gateway.main import create_app
 from gateway.query_log import QueryLogEntry, write_query_log
-from gateway.retrieval.hybrid import HybridConfig, hybrid_search
+from gateway.retrieval.hybrid import config_from as hybrid_config_from
+from gateway.retrieval.hybrid import hybrid_search
 from gateway.retrieval.vector import RetrievedChunk, vector_search
 from gateway.security.tokens import issue_token
 from gateway.stack import StackNotReady, check_stack, describe
@@ -360,19 +361,17 @@ async def evaluate_item(
         tenant_id = auth.tenant_id
         query_vec = await app_state.embedder.embed_query(item["question"])
         # Retrieve exactly as the API does (Phase 5: vector or hybrid, from settings).
-        if settings.retrieval_mode in ("hybrid", "hybrid_graph"):
+        hybrid = hybrid_config_from(settings)
+        trace: dict[str, Any] = {}
+        if hybrid is not None:
             chunks = await hybrid_search(
                 conn,
                 acl_filter=auth.acl(),
                 question=item["question"],
                 query_embedding=query_vec,
                 top_k=RETRIEVE_K,
-                config=HybridConfig(
-                    rrf_k=settings.hybrid_rrf_k,
-                    depth=settings.hybrid_depth,
-                    graph=settings.retrieval_mode == "hybrid_graph",
-                    graph_depth=settings.graph_depth,
-                ),
+                config=hybrid,
+                trace=trace,
             )
         else:
             chunks = await vector_search(
@@ -380,6 +379,8 @@ async def evaluate_item(
             )
     ranked = [gid(c) for c in chunks]
     record["retrieved"] = ranked
+    if trace:
+        record["graph"] = trace  # gated mode: the gate score and whether the graph path ran
     if item["type"] != "unanswerable":
         record["retrieval"] = retrieval_metrics(ranked, item)
     if judge_llm is None:  # retrieval-only run
@@ -527,7 +528,7 @@ async def preflight(
 
 
 def _hybrid_note(meta: dict[str, Any]) -> str:
-    if meta.get("retrieval_mode") not in ("hybrid", "hybrid_graph"):
+    if meta.get("retrieval_mode") in (None, "vector"):
         return ""
     return f" (vector + FTS, RRF k={meta.get('hybrid_rrf_k')}, top {meta.get('hybrid_depth')} per path)"
 
@@ -796,7 +797,8 @@ async def run(
             "retrieval_mode": settings.retrieval_mode,
             "hybrid_rrf_k": settings.hybrid_rrf_k if settings.retrieval_mode != "vector" else None,
             "hybrid_depth": settings.hybrid_depth if settings.retrieval_mode != "vector" else None,
-            "graph_depth": settings.graph_depth if settings.retrieval_mode == "hybrid_graph" else None,
+            "graph_depth": settings.graph_depth if "graph" in settings.retrieval_mode else None,
+            "graph_gate": settings.graph_gate if settings.retrieval_mode == "hybrid_graph_gated" else None,
             "retrieve_k": RETRIEVE_K,
             "delay_ms": int(delay_s * 1000),
             "started_utc": session_started,
