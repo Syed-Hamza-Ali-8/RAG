@@ -1,6 +1,7 @@
 """Phase 5 M2 feasibility probe: extract the pre-registered 54-chunk subset (EVAL_RESULTS.md, M2 probe).
 
     uv run python eval/graph_probe.py --extract   # resumable; stops before crossing the daily budget
+    uv run python eval/graph_probe.py --extract --all  # the full corpus (after the probe's rule said so)
     uv run python eval/graph_probe.py --report    # extraction outcomes, cost and time per document
 
 Then measure with the harness (no LLM calls):
@@ -45,8 +46,22 @@ class DocStats:
     relations: int = 0
 
 
-async def extract(settings: Settings) -> int:
-    rows = json.loads(SUBSET.read_text(encoding="utf-8"))
+async def all_chunks(settings: Settings) -> list[dict[str, str]]:
+    """Every chunk of the seeded corpus, in a fixed order (full-corpus extraction after the probe's rule)."""
+    pool = await create_pool(settings.database_dsn)
+    try:
+        rows = await pool.fetch(
+            "SELECT t.slug AS tenant, d.slug || '#' || c.ordinal AS chunk FROM chunks c "
+            "JOIN documents d ON d.id = c.document_id JOIN tenants t ON t.id = c.tenant_id "
+            "ORDER BY t.slug, d.slug, c.ordinal"
+        )
+    finally:
+        await pool.close()
+    return [{"tenant": r["tenant"], "chunk": r["chunk"]} for r in rows]
+
+
+async def extract(settings: Settings, everything: bool = False) -> int:
+    rows = await all_chunks(settings) if everything else json.loads(SUBSET.read_text(encoding="utf-8"))
     llm = OpenAICompatibleLLM(
         settings.model_copy(
             update={
@@ -167,13 +182,14 @@ def main() -> None:
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--extract", action="store_true")
     g.add_argument("--report", action="store_true")
+    ap.add_argument("--all", action="store_true", help="with --extract: the whole corpus")
     ap.add_argument("--force-containers", action="store_true")
     a = ap.parse_args()
     settings = get_settings()
     if a.report:
         sys.exit(asyncio.run(report(settings)))
     require_stack(strict=True, force_containers=a.force_containers)
-    sys.exit(asyncio.run(extract(settings)))
+    sys.exit(asyncio.run(extract(settings, everything=a.all)))
 
 
 if __name__ == "__main__":
