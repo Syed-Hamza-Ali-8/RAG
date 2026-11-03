@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     hybrid_rrf_k: int = 60
     hybrid_depth: int = 20
     graph_depth: int = 2
+    graph_order: Literal["depth_support", "cosine"] = "depth_support"  # cosine: M2 option A
     graph_gate: float = 0.38  # pre-registered: between top single-hop (0.369) and lowest multi-hop (0.390)
     # Entity/relation extraction (Phase 5): an explicit tier, offline ingestion only; never switched at
     # runtime.

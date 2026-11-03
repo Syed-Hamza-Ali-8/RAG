@@ -13,7 +13,7 @@ from uuid import UUID
 import asyncpg
 
 from gateway.config import Settings
-from gateway.retrieval.graph import graph_search
+from gateway.retrieval.graph import GraphOrder, graph_search
 from gateway.retrieval.keyword import keyword_search
 from gateway.retrieval.vector import RetrievedChunk, vector_search
 from gateway.routing.classifier import complexity
@@ -28,6 +28,7 @@ class HybridConfig:
     graph_depth: int = 2  # walk depth cap (correction M)
     graph_seeds: int = 6  # the fused vector+keyword top-n whose entities seed the walk
     graph_gate: float | None = None  # None: always fuse; else walk only when the complexity score >= this
+    graph_order: GraphOrder = "depth_support"
 
 
 def config_from(settings: Settings) -> HybridConfig | None:
@@ -41,6 +42,7 @@ def config_from(settings: Settings) -> HybridConfig | None:
         graph=mode in ("hybrid_graph", "hybrid_graph_gated"),
         graph_depth=settings.graph_depth,
         graph_gate=settings.graph_gate if mode == "hybrid_graph_gated" else None,
+        graph_order=settings.graph_order,
     )
 
 
@@ -92,6 +94,7 @@ async def hybrid_search(
             query_embedding=query_embedding,
             max_depth=config.graph_depth,
             top_k=depth,
+            order=config.graph_order,
         )
         by_id.update({c.chunk_id: c for c in walked})
         fused = rrf([*rankings, [c.chunk_id for c in walked]], config.rrf_k)

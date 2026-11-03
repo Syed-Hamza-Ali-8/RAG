@@ -799,6 +799,7 @@ async def run(
             "hybrid_depth": settings.hybrid_depth if settings.retrieval_mode != "vector" else None,
             "graph_depth": settings.graph_depth if "graph" in settings.retrieval_mode else None,
             "graph_gate": settings.graph_gate if settings.retrieval_mode == "hybrid_graph_gated" else None,
+            "graph_order": settings.graph_order if "graph" in settings.retrieval_mode else None,
             "retrieve_k": RETRIEVE_K,
             "delay_ms": int(delay_s * 1000),
             "started_utc": session_started,

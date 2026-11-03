@@ -143,3 +143,39 @@ def test_graph_sql_filters_inside_the_walk_and_on_the_result() -> None:
     pred = acl.acl_predicate("c", 2)
     assert sql.count(pred) == 2
     assert sql.index(pred) < sql.index(") SELECT")  # the first one is inside the recursive CTE
+
+
+async def test_cosine_order_ranks_the_walk_by_similarity(pool: asyncpg.Pool, g: dict[str, Any]) -> None:
+    # Option A orders the graph list by cosine to the question; the ACL filter is unchanged by the ordering.
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE chunks SET embedding = $2 WHERE id = $1", g["p_pub"], [0.0, 1.0] + [0.0] * 382
+        )
+        hits = await graph_search(
+            conn,
+            acl_filter=AclFilter(g["tenant"], ("employee", "hr"), 2),
+            seed_chunk_ids=[g["s"]],
+            query_embedding=VEC,
+            max_depth=2,
+            top_k=20,
+            order="cosine",
+        )
+        employee = await graph_search(
+            conn,
+            acl_filter=AclFilter(g["tenant"], ("employee",), 0),
+            seed_chunk_ids=[g["s"]],
+            query_embedding=VEC,
+            max_depth=2,
+            top_k=20,
+            order="cosine",
+        )
+    assert hits[-1].chunk_id == g["p_pub"] and [h.score for h in hits] == sorted(
+        (h.score for h in hits), reverse=True
+    )
+    assert {h.chunk_id for h in employee} == {g["s"]}
+
+
+def test_both_orders_keep_both_acl_predicates() -> None:
+    pred = acl.acl_predicate("c", 2)
+    for order in ("depth_support", "cosine"):
+        assert graph._graph_sql(order).count(pred) == 2  # type: ignore[arg-type]
