@@ -54,6 +54,8 @@ BASELINES_DIR = EVAL_DIR / "baselines"
 EVAL_RESULTS_MD = ROOT / "EVAL_RESULTS.md"
 
 RETRIEVE_K = 10
+# --rejudge only (EVAL_RESULTS.md, Phase 5 gate run): the judge's reasoning ran past the standard limit.
+REJUDGE_MAX_COMPLETION_TOKENS = 4000
 # Pre-flight fallback when query_log has no recent calls to average over (tokens per call).
 DEFAULT_TOKENS_PER_CALL = {"query": 2600, "eval_judge": 4000}
 # Per-call estimates are averages; budget planning inflates them so one long item cannot cross the cap.
@@ -441,6 +443,55 @@ async def evaluate_item(
     return record
 
 
+async def rejudge(
+    pool: asyncpg.Pool,
+    judge_llm: OpenAICompatibleLLM,
+    record: dict[str, Any],
+    item: dict[str, Any],
+    top_k: int,
+    delay_s: float,
+) -> dict[str, Any]:
+    """Judge a stored answer again: same sources (re-read from the record's own top-k), same judge prompt.
+    Only for a record whose judge call failed; the failed call stays in query_log."""
+    if not record.get("judge_error") or record.get("refused") or not record.get("answer"):
+        raise SystemExit(
+            f"--rejudge {record['id']}: only an answered item with a judge error can be re-judged"
+        )
+    async with pool.acquire() as conn:
+        tenant_id = (await auth_for_email(conn, item["tenant"], item["as_user"])).tenant_id
+        sources = []
+        for n, chunk in enumerate(record["retrieved"][:top_k], 1):
+            slug, ordinal = chunk.rsplit("#", 1)
+            row = await conn.fetchrow(
+                "SELECT d.title, c.content FROM chunks c JOIN documents d ON d.id = c.document_id "
+                "WHERE c.tenant_id = $1 AND d.slug = $2 AND c.ordinal = $3",
+                tenant_id,
+                slug,
+                int(ordinal),
+            )
+            if row is None:
+                raise SystemExit(f"--rejudge {record['id']}: {chunk} is no longer in the corpus")
+            sources.append(Source(f"S{n}", row["title"], row["content"]))
+    result = await judge_and_log(
+        pool,
+        tenant_id,
+        judge_llm,
+        item["question"],
+        item["expected_answer"],
+        sources,
+        record["answer"],
+        delay_s,
+    )
+    out = {k: v for k, v in record.items() if k not in ("judge_error", "judge_raw", "judge_query_log_id")}
+    out.update(result)
+    out["rejudged"] = {
+        "original_error": record["judge_error"],
+        "original_judge_query_log_id": record.get("judge_query_log_id"),
+        "max_completion_tokens": REJUDGE_MAX_COMPLETION_TOKENS,
+    }
+    return out
+
+
 def budget_check(used: int, per_call: float, calls: int, limit: int) -> tuple[int, int, bool]:
     """(needed, remaining, fits) for one model's rolling 24-hour token budget."""
     needed = round(per_call * calls)
@@ -663,7 +714,12 @@ def read_partial(path: Path) -> Partial:
     """(original meta, item records, session records). Session lines are {"session": {...}}."""
     lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     meta = lines[0]["meta"]
-    records = [line for line in lines[1:] if "session" not in line]
+    # A re-judged item is appended again; the latest record per id wins, in first-seen order.
+    latest: dict[str, dict[str, Any]] = {}
+    for line in lines[1:]:
+        if "session" not in line:
+            latest[line["id"]] = line
+    records = list(latest.values())
     sessions = [line["session"] for line in lines[1:] if "session" in line]
     return meta, records, sessions
 
@@ -816,6 +872,32 @@ async def run(
         RESULTS_DIR.mkdir(exist_ok=True)
         if not args.resume:
             partial.write_text(json.dumps({"meta": meta}) + "\n", encoding="utf-8")
+        if args.rejudge:
+            if not args.resume or judge_llm is None:
+                raise SystemExit("--rejudge needs --resume of a judged run")
+            by_id = {r["id"]: r for r in records}
+            items_by_id = {i["id"]: i for i in items}
+            rejudge_llm = OpenAICompatibleLLM(
+                settings.model_copy(update={"llm_max_completion_tokens": REJUDGE_MAX_COMPLETION_TOKENS}),
+                settings.eval_judge_tier,
+            )
+            try:
+                for rid in args.rejudge:
+                    if rid not in by_id:
+                        raise SystemExit(f"--rejudge {rid}: not in this partial run")
+                    new = await rejudge(
+                        pool, rejudge_llm, by_id[rid], items_by_id[rid], settings.retrieval_top_k, delay_s
+                    )
+                    records[records.index(by_id[rid])] = new
+                    with partial.open("a", encoding="utf-8") as f:
+                        f.write(json.dumps(new, ensure_ascii=False) + "\n")
+                    status = "error" if new.get("judge_error") else "ok"
+                    print(
+                        f"  rejudged {rid}: judge={status} (limit {REJUDGE_MAX_COMPLETION_TOKENS})",
+                        flush=True,
+                    )
+            finally:
+                await rejudge_llm.aclose()
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://eval", timeout=180) as client:
             for n, item in enumerate(todo, 1):
@@ -903,6 +985,12 @@ def main() -> None:
     parser.add_argument("--baseline", metavar="LABEL", help='record a full run as a baseline, e.g. "Phase 2"')
     parser.add_argument("--delay-ms", type=int, help="override EVAL_REQUEST_DELAY_MS")
     parser.add_argument("--resume", metavar="PARTIAL", help="continue a stopped run from its .partial.jsonl")
+    parser.add_argument(
+        "--rejudge",
+        action="append",
+        metavar="ITEM_ID",
+        help="with --resume: judge this item's stored answer again (judge errors only), before continuing",
+    )
     parser.add_argument(
         "--clear-cache", action="store_true", help="fresh runs only: empty the semantic cache before starting"
     )

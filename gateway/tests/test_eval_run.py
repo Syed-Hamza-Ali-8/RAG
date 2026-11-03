@@ -25,6 +25,7 @@ from run_eval import (
     load_golden,
     mode_name,
     read_partial,
+    rejudge,
     run,
     select_subset,
     stratum,
@@ -423,3 +424,56 @@ async def test_budget_counts_extraction_tokens_too(pool: asyncpg.Pool) -> None:
         )
         assert await tokens_used_24h(conn, "budget-model") - before == 1610
         await conn.execute("DELETE FROM tenants WHERE id = $1", tid)
+
+
+def test_read_partial_keeps_the_latest_record_per_item(tmp_path: Path) -> None:
+    # A re-judged item is appended again; the resumed run and the final result see only the latest record.
+    f = tmp_path / "x.partial.jsonl"
+    f.write_text(
+        '{"meta": {"run_id": "r1"}}\n{"id": "q001", "judge_error": "cut"}\n{"id": "q002"}\n'
+        '{"id": "q001", "judge": {"correct": true}}\n',
+        encoding="utf-8",
+    )
+    _, records, _ = read_partial(f)
+    assert records == [{"id": "q001", "judge": {"correct": True}}, {"id": "q002"}]
+
+
+async def test_rejudge_uses_the_stored_answer_and_sources_and_records_the_deviation(
+    eval_app: tuple[Any, httpx.AsyncClient], settings: Settings
+) -> None:
+    app, _ = eval_app
+    item = {
+        "id": "t4",
+        "tenant": "evalco",
+        "as_user": "hr@evalco.example",
+        "question": "How much annual leave do staff get?",
+        "expected_answer": "21 days.",
+    }
+    record = {
+        "id": "t4",
+        "answer": "21 days [S1].",
+        "refused": False,
+        "retrieved": ["hr-leave-policy#0"],
+        "judge_error": "stub-judge stopped at the completion limit after 1500 tokens",
+        "judge_raw": "{",
+        "judge_query_log_id": 7,
+    }
+    judge = StubJudge()
+    new = await rejudge(app.state.pool, judge, record, item, top_k=6, delay_s=0)
+    assert new["judge"]["correct"] is True and "judge_error" not in new and "judge_raw" not in new
+    assert new["rejudged"]["original_error"].startswith("stub-judge stopped")
+    assert new["rejudged"]["original_judge_query_log_id"] == 7
+    assert new["answer"] == record["answer"] and new["retrieved"] == record["retrieved"]
+    sent = str(judge.calls[0])
+    assert "21 days [S1]." in sent and "S1" in sent  # the stored answer and its rebuilt source
+
+
+async def test_rejudge_refuses_an_item_without_a_judge_error(
+    eval_app: tuple[Any, httpx.AsyncClient], settings: Settings
+) -> None:
+    app, _ = eval_app
+    item = {"id": "t5", "tenant": "evalco", "as_user": "hr@evalco.example"}
+    with pytest.raises(SystemExit):
+        await rejudge(
+            app.state.pool, StubJudge(), {"id": "t5", "answer": "x", "judge": {}}, item, top_k=6, delay_s=0
+        )

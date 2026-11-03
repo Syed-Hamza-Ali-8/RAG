@@ -1241,6 +1241,15 @@ judged against Phase 4.
   refused. Whatever the judged numbers are, they are reported against this prediction, misses as visibly as hits.
 - The ACL gate item is the three isolation suites in full on a quiet machine, run after the judged run.
 
+**Deviation recorded 2026-11-03, after session 1 and before session 2 (user decision).** Session 1 stopped on the
+budget guard at 35/100. One item, **q030** (single-hop, answered), has no verdict: the judge (gpt-oss-120b,
+judge-v2) ran past its 1,500-token completion limit, the same reasoning-budget effect recorded for extraction. It is
+re-judged **once** at the start of session 2 (`run_eval.py --resume ... --rejudge q030`): same stored answer, the
+same six sources re-read from the record's own top 6, same judge model and prompt, completion limit **4,000**.
+The record carries `rejudged` (the original error and its `query_log` id); the truncated call stays in
+`query_log`. If the re-judge also fails, q030 is reported as unjudged; it is not tried a third time. Any other
+judge error in sessions 2-3 is reported as unjudged unless the user decides otherwise.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
