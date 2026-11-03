@@ -1,0 +1,28 @@
+item gold_hop graph_list_size rank_depth_support rank_cosine
+q051 legal-vendor-agreement-cobalt-cloud#2 53 26 16
+q052 public-company-overview#0 16 7 7
+q056 eng-runbook-database-failover#1 28 21 8
+q058 public-company-overview#0 53 23 9
+q063 eng-platform-architecture#0 28 7 20
+q064 legal-vendor-agreement-tessera-cloud#2 47 30 20
+q067 legal-vendor-agreement-tessera-cloud#1 47 21 13
+q068 hr-leave-policy#1 17 4 13
+q068 hr-salary-bands#0 17 14 7
+q069 legal-contract-sunridge-schools#9 47 35 9
+q069 legal-iso-27001-surveillance-plan#0 47 33 17
+q070 finance-vendor-register#0 86 3 54
+q072 finance-vendor-register#1 60 1 9
+q073 eng-postmortem-2026-03-portal-outage#0 86 33 38
+q074 legal-contract-sunridge-schools#5 47 11 7
+q075 legal-vendor-agreement-tessera-cloud#2 60 37 21
+missing-from-M1-top6 hops: 16; in graph list at all: 16
+in graph top 20, depth/support order: 7
+in graph top 20, cosine order: 13
+in graph top 6, cosine order: 0
+median graph list size: 47
+hub (chunks attached): acme|Acme|50
+hub (chunks attached): globex|Globex|45
+hub (chunks attached): acme|Cobalt Cloud|43
+hub (chunks attached): globex|Ledger Vault|40
+hub (chunks attached): globex|Tessera Cloud Ltd|33
+hub (chunks attached): acme|Atlas|26

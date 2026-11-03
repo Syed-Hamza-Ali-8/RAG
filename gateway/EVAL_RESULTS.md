@@ -1093,6 +1093,54 @@ direction: measure the stage that binds.
   for it are candidate fixes; either is a new deviation, brought to the user and pre-registered before it is
   built or measured.
 
+### M2 measured on the full corpus (2026-11-03): the graph path, as built, made retrieval worse
+
+**Extraction** (`extract-v1-low`, gpt-oss-20b, limit 2,000; `~/gateway_runs/graph_full_report_20261103.log`):
+250 of 251 chunks, 697 entities, 1,147 relations, 302,667 tokens over 253 attempts, 411 s of LLM time, no
+truncations. JSON validity: **first attempt 249/251 (99.2%)**, **after one retry 250/251 (99.6%)**; the one chunk
+missing is legal-sow-brightwater-health #4 (a distractor).
+
+**Measurement:** retrieval-only, compared with M1; `eval/phase5/m2_always_fuse.json` (`hybrid_graph`) and
+`eval/phase5/m2_gated.json` (`hybrid_graph_gated`, gate 0.38), both at `0b4eff4`.
+
+| measure | Phase 4 | M1 | always-fuse | gated |
+|---|---|---|---|---|
+| **multi-hop all-hops@6 (headline)** | 11/25 | **14/25** | **9/25** | **9/25** |
+| multi-hop all-hops@10 (diagnostic) | 15/25 | 17/25 | 15/25 | 15/25 |
+| bridge items resolved (@10) | 0/5 | 0/5 | 0/5 | 0/5 |
+| single-hop recall@6 | 0.920 | 0.980 | **0.640** | 0.980 |
+| buried-fact recall@6 | 18/20 | 20/20 | **12/20** | 20/20 |
+| MRR (all answerable) | 0.700 | 0.820 | 0.523 | 0.727 |
+
+- **Multi-hop, both variants, against M1:** gained none at @6, lost q060, q061, q065, q071, q072; at @10 lost q067
+  and q071. On the headline number both variants fall below Phase 4 as well as M1. Bridge items (hop ranks):
+  q051 [9, —], q056 [3, —], q058 [1, —], q064 [7, —], q069 [—, —]. **The probe's 3 resolutions did not survive
+  the full graph**: the outcome the probe's limitation named in advance (a subset success can overstate
+  full-corpus success).
+- **Planner rule (pre-registered measure, all-hops@10): always-fuse 15, gated 15; always-fuse does not catch 2
+  more, so gated is chosen.** Always-fuse is rejected independently by the single-hop limit: it lost 18 single-hop
+  items at @6 (q004, q008, q018, q020, q022, q023, q026, q027, q032, q039, q040, q043, q101, q104, q106, q108,
+  q109, q110), 8 of them buried-fact (q022, q023, q026, q104, q106, q108, q109, q110). q022 fell from rank 3 to 10
+  under always-fuse and stays at 3 under gated.
+- **Gate:** the planner expectation held. 0 of 50 single-hop and 0 of 20 buried-fact items crossed 0.38, and
+  gated left all of them exactly at M1. All 25 multi-hop items crossed it. One other item crossed: **q093
+  (near-miss, score 0.513)**.
+- **The subset-artifact hypothesis is refuted:** on the full corpus, where every chunk can appear in the graph
+  list, the damage is larger, not smaller. It is structural.
+
+**Diagnosis (no LLM calls; `eval/phase5/graph_reach.py`, output `eval/phase5/m2_graph_reach.txt`).** For the 16
+gold hops missing from M1's top 6 across the multi-hop items:
+- **All 16 are reachable** in the depth-2 walk; the walk is not the problem. It reaches too much: the median
+  graph list is 47 chunks. Hub entities make it so: "Acme" is attached to 50 of acme's 133 chunks, "Globex" to 45
+  of globex's 118, "Cobalt Cloud" to 43.
+- **The ordering is the problem.** Ordered by depth then support (as pre-registered), only 7 of the 16 make the
+  top 20 that enters RRF; ordered by cosine to the question, 13 would, but **none would be in the graph list's
+  top 6 by cosine**. The depth/support order promotes hub-adjacent, relation-dense chunks, which then take a
+  third RRF vote and displace query-relevant chunks.
+
+**Finding:** the graph surfaced no gain that reaches the generator and cost 5 multi-hop items at @6 even when
+confined to multi-hop questions. No ordering or weight change has been made; a proposal goes to the user first.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
