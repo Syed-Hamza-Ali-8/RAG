@@ -1,0 +1,16 @@
+q051 legal-vendor-agreement-cobalt-cloud#2 vec 17 kw None graph_cos 16 M1 0.0130 +graph 0.0261 vs M1 6th 0.0288 
+q052 public-company-overview#0 vec 7 kw 8 graph_cos 7 M1 0.0296 +graph 0.0446 vs M1 6th 0.0303 CAN_CLIMB
+q056 eng-runbook-database-failover#1 vec 12 kw 16 graph_cos 8 M1 0.0270 +graph 0.0418 vs M1 6th 0.0295 CAN_CLIMB
+q058 public-company-overview#0 vec 12 kw 20 graph_cos 9 M1 0.0264 +graph 0.0409 vs M1 6th 0.0292 CAN_CLIMB
+q063 eng-platform-architecture#0 vec None kw 10 graph_cos 20 M1 0.0143 +graph 0.0268 vs M1 6th 0.0293 
+q064 legal-vendor-agreement-tessera-cloud#2 vec None kw 2 graph_cos 20 M1 0.0161 +graph 0.0286 vs M1 6th 0.0299 
+q067 legal-vendor-agreement-tessera-cloud#1 vec 14 kw 5 graph_cos 13 M1 0.0289 +graph 0.0426 vs M1 6th 0.0297 CAN_CLIMB
+q068 hr-leave-policy#1 vec 20 kw 1 graph_cos 13 M1 0.0289 +graph 0.0426 vs M1 6th 0.0301 CAN_CLIMB
+q068 hr-salary-bands#0 vec 9 kw 12 graph_cos 7 M1 0.0284 +graph 0.0433 vs M1 6th 0.0301 CAN_CLIMB
+q069 legal-contract-sunridge-schools#9 vec 9 kw 5 graph_cos 9 M1 0.0299 +graph 0.0444 vs M1 6th 0.0301 CAN_CLIMB
+q069 legal-iso-27001-surveillance-plan#0 vec 19 kw 17 graph_cos 17 M1 0.0256 +graph 0.0386 vs M1 6th 0.0301 CAN_CLIMB
+q070 finance-vendor-register#0 vec None kw None graph_cos None M1 0.0000 +graph 0.0000 vs M1 6th 0.0290 
+q072 finance-vendor-register#1 vec 9 kw 13 graph_cos 9 M1 0.0282 +graph 0.0427 vs M1 6th 0.0296 CAN_CLIMB
+q073 eng-postmortem-2026-03-portal-outage#0 vec None kw None graph_cos None M1 0.0000 +graph 0.0000 vs M1 6th 0.0293 
+q074 legal-contract-sunridge-schools#5 vec 7 kw 10 graph_cos 7 M1 0.0292 +graph 0.0441 vs M1 6th 0.0301 CAN_CLIMB
+q075 legal-vendor-agreement-tessera-cloud#2 vec None kw 1 graph_cos None M1 0.0164 +graph 0.0164 vs M1 6th 0.0301 

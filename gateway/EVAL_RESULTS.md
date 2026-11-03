@@ -1141,6 +1141,36 @@ gold hops missing from M1's top 6 across the multi-hop items:
 **Finding:** the graph surfaced no gain that reaches the generator and cost 5 multi-hop items at @6 even when
 confined to multi-hop questions. No ordering or weight change has been made; a proposal goes to the user first.
 
+### M2 option A: pre-registration (fixed 2026-11-03, before A is built or run; user-approved)
+
+One final, pre-registered attempt; nothing else in M2 changes. If it fails the rule below, M2 is reported as "the
+graph layer did not help on this corpus" (option D) and M1 ships.
+
+- **The single change:** the graph list is ordered by **cosine similarity to the question** (the score the walk
+  already computes) instead of depth then support. Everything else as measured: gated at 0.38, depth 2, seeds =
+  entities of the fused top 6, top 20 of the graph list into RRF, k = 60, equal weight.
+- **Adoption rule:** adopt gated+A only if **multi-hop all-hops@6 > 14/25 (M1)** and **no single-hop or
+  buried-fact item loses recall@6 against M1**. Otherwise D. The planner variant is not revisited (gated stands).
+- **Arithmetic ceiling, computed before the run** (`eval/phase5/graph_ceiling.py`, output
+  `eval/phase5/m2_graph_ceiling.txt`; read-only, no LLM calls). A missing hop enters M1's top 6 only if its fused
+  score, with a graph vote of 1/(60 + its cosine rank in the graph list), beats the sixth chunk's. Under the
+  optimistic assumption that the chunks already in the top 6 gain nothing from the graph list:
+  - 6 of the 16 missing hops can never climb: 2 are in no list at all (q070, q073: the graph cannot help a hop
+    no path finds), 1 is outside the graph top 20 (q075), 3 fall short even with the vote (q051, q063, q064).
+  - 10 hops can climb, covering 8 items with every missing hop climbable: q052, q056, q058, q067, q068, q069,
+    q072, q074. **Ceiling: +8 items at @6.** Of the 5 bridge items only q056 and q058 are under the ceiling.
+  - Correction to the arithmetic given to the user before this section: "only hops already ranked 7-20 in the
+    vector or keyword list could climb" stands, but there are more of them (10 of 16) than the "0 to 1" estimate
+    implied. That estimate was too low as a ceiling.
+- **Why the realistic gain is far below the ceiling:** the top-6 chunks are the walk's seeds' provenance and are
+  the most similar to the question, so under cosine ordering they take the graph list's top ranks, and their own
+  graph vote (1/61 to 1/66) is larger than any missing hop's (1/67 or less). The ceiling assumes they get none.
+- **Prediction:** multi-hop all-hops@6 **14/25, range 13-16**: the damage measured under depth/support ordering
+  (14 -> 9) is largely undone because the graph list now echoes the vector ranking; gain over M1 0 to +2, most
+  likely from q052, q069 or q074 (the hops whose third vote clears the sixth score by the widest margin).
+  Single-hop and buried-fact: exactly at M1 (gated; 0 of 70 crossed the gate). **Most likely outcome: the rule
+  is not met and D follows.**
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
