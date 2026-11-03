@@ -1171,6 +1171,76 @@ graph layer did not help on this corpus" (option D) and M1 ships.
   Single-hop and buried-fact: exactly at M1 (gated; 0 of 70 crossed the gate). **Most likely outcome: the rule
   is not met and D follows.**
 
+### M2 option A: result (measured 2026-11-03 at `cb46d0e`)
+
+`RETRIEVAL_MODE=hybrid_graph_gated GRAPH_ORDER=cosine`, retrieval-only against M1; `eval/phase5/m2_optionA.json`.
+
+| measure | M1 | gated, depth/support | **gated, cosine (A)** | predicted for A |
+|---|---|---|---|---|
+| multi-hop all-hops@6 | 14/25 | 9/25 | **14/25** | 14 (13-16) |
+| multi-hop all-hops@10 | 17/25 | 15/25 | 18/25 | not predicted |
+| single-hop recall@6 | 0.980 | 0.980 | 0.980 | at M1 |
+| buried-fact recall@6 | 20/20 | 20/20 | 20/20 | at M1 |
+| MRR (all answerable) | 0.820 | 0.727 | 0.816 | not predicted |
+
+- **Prediction held at its point value: 14/25.** Cosine ordering undid all of the damage (no item lost at @6, none
+  on single-hop or buried-fact) and gained nothing at @6. The one movement is q056's second hop reaching rank 9:
+  inside the measured window, outside the six chunks the model reads.
+- **Adoption rule (> 14/25 with no single-hop or buried-fact loss): not met. Option D follows.** The ceiling of
+  +8 assumed the chunks already in the top 6 gain nothing from the graph list; under cosine ordering they take
+  its top ranks, which is why the realised gain is 0.
+
+## Phase 5 M2 (GraphRAG): the graph layer did not help on this corpus (recorded 2026-11-03)
+
+**Claim to ship** (user-approved shape, the routing write-up's form):
+
+> **GraphRAG: built, measured, ACL-correct; on this corpus it does not improve what reaches the model, so it ships
+> off.** Entity and relation extraction ran over all 251 chunks with the small model (99.2% valid JSON on the
+> first attempt, 99.6% after one retry; 302,667 tokens, about USD 0.06 at list price). The graph walk is
+> depth-capped, bidirectional, and applies the ACL predicate to every relation it traverses, not only to the
+> chunks it returns (a defect in the spec's own query, corrected before any code). Fused into hybrid retrieval as
+> a third RRF list, it surfaced no second hop into the six chunks the model reads. With the pre-registered
+> ordering it pushed multi-hop all-hops@6 from 14/25 to 9/25 even when gated to multi-hop questions, and
+> always-fused it cost 18 single-hop items. Ordered by relevance (one final pre-registered attempt) it stopped
+> doing harm and still gained nothing: 14/25 against 14/25. A gain that does not reach the generator is not a
+> gain.
+>
+> **The transferable lesson: GraphRAG's traversal reached every hop it needed — all 16 were within depth 2. It
+> failed because hub entities ('Acme' on 50 of 133 chunks) make the reachable set so large that the graph list
+> is near-arbitrary, and fusing it as a third equal vote damages the top of the ranking. A graph helps when
+> entities are selective; on a corpus where common entities touch a third of all chunks, traversal recall is not
+> the binding constraint — ranking is.**
+>
+> The graph code stays built, tested (the ACL-isolation suite runs in both graph modes) and off
+> (`RETRIEVAL_MODE=hybrid`), as routing does. Phase 5 ships M1, hybrid retrieval, which met every pre-registered
+> target.
+
+**Evidence, by section above:** full-corpus result and diagnosis ("M2 measured on the full corpus"), reachability
+and hub degrees (`eval/phase5/m2_graph_reach.txt`), option A's ceiling and result (`eval/phase5/m2_graph_ceiling.txt`,
+`eval/phase5/m2_optionA.json`). The probe's 3 resolutions (`eval/phase5/m2_probe.json`) did not survive the full
+graph, as the probe's pre-stated limitation allowed.
+
+**Extraction cost and ingestion time per document (spec gate item):** `eval/phase5/m2_extraction_report.md`, one
+row per document (50 documents). LLM time per document: mean 8.2 s, max 35.0 s; shadow cost per document: mean
+USD 0.00115, total USD 0.0574 (Groq list price for gpt-oss-20b, read 2026-10-29; the free tier charges nothing).
+Wall-clock ingestion is dominated by the 30 s pacing the free tier forces: about 33 s per chunk, so about 2.8
+minutes for a 5-chunk document; with no rate limit it would be the LLM time.
+
+## Phase 5 gate run: prediction restated for the shipped configuration (fixed 2026-11-03, before the run)
+
+The gate run is one full judged run of `RETRIEVAL_MODE=hybrid` (M1), cache cleared at its start, compared with the
+Phase 4 baseline (`eval/baselines/phase-4.json`); the Phase 2 numbers are reported beside it (spec gate wording),
+judged against Phase 4.
+
+- The pre-registered gate prediction (multi-hop correct 18/25 → +1 to +3; single-hop correct no regression beyond
+  the ±3-item band of Run A) assumed M1 and M2. M2 contributes nothing to the shipped configuration and was
+  predicted to contribute at most +1 at @10, so **the prediction stands unchanged** for M1 alone: retrieval-only,
+  M1 raised multi-hop all-hops@6 from 11/25 to 14/25 and buried-fact recall@6 from 18/20 to 20/20, with single-hop
+  recall@6 from 0.920 to 0.980.
+- Correctness can lag retrieval: an item whose hops both reach the top 6 can still be answered wrongly or
+  refused. Whatever the judged numbers are, they are reported against this prediction, misses as visibly as hits.
+- The ACL gate item is the three isolation suites in full on a quiet machine, run after the judged run.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the

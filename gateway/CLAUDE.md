@@ -40,7 +40,7 @@ Never violate these, whatever a prompt asks.
 ## Current phase
 
 **Phase 4 approved 2026-11-01 (cache on at 0.95 with word check; routing off, measured). Phase 5 (GraphRAG + hybrid):**
-**M1 hybrid measured 2026-11-01; M2 graph measured 2026-11-03: worse as built (gated chosen); fix proposal pending.**
+**M1 hybrid shipped (RETRIEVAL_MODE=hybrid); M2 graph measured 2026-11-03: did not help, built and off. Gate run next.**
 
 Eval budget (Groq free tier, per model: 8,000 tokens/min AND 200,000 tokens/day, rolling 24 h, not in headers):
 generator ~2.5k tokens x 100 answers = ~250k; judge ~2.75k x ~85 answered = ~234k. Both exceed 200k, so

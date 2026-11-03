@@ -53,7 +53,8 @@ class Settings(BaseSettings):
     # fixed by the Phase 5 pre-registration; not tuned on the golden set.
     # "hybrid_graph" fuses the graph path on every query (always-fuse); "hybrid_graph_gated" only when the
     # complexity score of the vector+FTS top-k reaches graph_gate (the planner; EVAL_RESULTS.md addendum).
-    retrieval_mode: Literal["vector", "hybrid", "hybrid_graph", "hybrid_graph_gated"] = "vector"
+    # Shipped: "hybrid" (Phase 5 result, M1). The graph modes are built, tested and off (EVAL_RESULTS.md, M2).
+    retrieval_mode: Literal["vector", "hybrid", "hybrid_graph", "hybrid_graph_gated"] = "hybrid"
     hybrid_rrf_k: int = 60
     hybrid_depth: int = 20
     graph_depth: int = 2
