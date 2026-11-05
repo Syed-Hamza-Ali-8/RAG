@@ -21,7 +21,8 @@ COPY migrations ./migrations
 COPY scripts ./scripts
 COPY corpus ./corpus
 COPY eval/baselines ./eval/baselines
-COPY docker/entrypoint.sh /entrypoint.sh
+# Mode set here, not inherited: git on NTFS (core.filemode=false) and Windows checkouts drop the exec bit.
+COPY --chmod=0755 docker/entrypoint.sh /entrypoint.sh
 RUN uv sync --frozen --no-dev
 
 # Unprivileged user; the embedding-weights cache is a volume this user owns.
