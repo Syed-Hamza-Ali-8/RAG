@@ -1,6 +1,7 @@
 """Harness tests: subset selection, aggregation, labelling, and one end-to-end item with stub LLMs."""
 
 import argparse
+import json
 from collections import Counter
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -477,3 +478,16 @@ async def test_rejudge_refuses_an_item_without_a_judge_error(
         await rejudge(
             app.state.pool, StubJudge(), {"id": "t5", "answer": "x", "judge": {}}, item, top_k=6, delay_s=0
         )
+
+
+def test_reopen_result_rebuilds_a_partial_that_read_partial_accepts(tmp_path: Path) -> None:
+    from reopen_result import reopen
+
+    meta = {"run_id": "r9", "golden_hash": "h", "sessions": [{"elapsed_min": 1.0}], "finished_utc": "t"}
+    res = tmp_path / "r9.json"
+    res.write_text(json.dumps({"meta": meta, "aggregate": {}, "records": [{"id": "q1"}, {"id": "q2"}]}))
+    m, records, sessions = read_partial(reopen(res))
+    assert m == {"run_id": "r9", "golden_hash": "h"}
+    assert [r["id"] for r in records] == ["q1", "q2"] and sessions == [{"elapsed_min": 1.0}]
+    with pytest.raises(SystemExit):
+        reopen(res)  # never overwrites a partial

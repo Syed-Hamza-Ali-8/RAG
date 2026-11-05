@@ -1250,6 +1250,15 @@ The record carries `rejudged` (the original error and its `query_log` id); the t
 `query_log`. If the re-judge also fails, q030 is reported as unjudged; it is not tried a third time. Any other
 judge error in sessions 2-3 is reported as unjudged unless the user decides otherwise.
 
+**Second deviation, recorded 2026-11-05 after the run completed and before the baseline was committed (user
+decision).** Session 2 finished the run (100/100) with two more judge errors, **q055 and q056** (multi-hop,
+answered, both correct in Phase 4): the judge ran past 1,500 tokens again. Both are re-judged **once**, exactly
+as q030: same stored answers, same sources, same judge and prompt, limit 4,000. Because finalizing had deleted
+the partial, it is rebuilt losslessly from the results file (`eval/reopen_result.py`) and the run is resumed
+with `--rejudge q055 --rejudge q056 --compare-to eval/baselines/phase-4.json`; no item is generated again. The
+uncommitted Phase 5 baseline written at the end of session 2 is replaced by the one this produces. A second
+failure on either item is reported as unjudged.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
