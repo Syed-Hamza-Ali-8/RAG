@@ -1449,6 +1449,23 @@ before any dashboard code). 32 probes, over 6 traffic questions.
 - The eval probe counts only if the baseline file really contains the per-item question it must not show.
 - **Mutation:** with the dashboard's tenant scope replaced by TRUE, every cross-tenant probe must fail.
 
+### Phase 6 dashboard: decision 1 revised (user, 2026-11-06, before the code change)
+
+**Question text is shown only when the viewing admin may read every chunk that query retrieved.** Otherwise the row
+is shown with everything else intact (time, user, roles, outcome, chunk counts, withheld count, denied count,
+latency) and the question replaced by a marker saying why. Reason (user): question text leaks what Phase 3
+protects: "minimum monthly salary for a Manager C1" tells an admin without HR access that salary bands exist and
+what someone wanted from them, and in a real deployment questions are often more sensitive than documents. A
+retrieved chunk that no longer exists cannot be checked, so it also redacts.
+
+- New probes **d033** (feed) and **d034** (audit): the HR user's row is visible (`hr@acme.example`, "Question
+  withheld"), its marker and wording are absent; live control: with the redaction check removed, the marker appears.
+- **Probes changed to the stricter rule:** d009 and d028 had required the HR question's marker to be *present*;
+  they now require the row (`hr@acme.example`, "Question withheld") present and the marker absent. This tightens
+  them; nothing is removed from what they check.
+- Questions from employee-level users stay visible: an admin (employee, admin; clearance 3) may read every chunk
+  an employee (clearance 1) may read, so the cross-tenant probes' live controls still see their markers.
+
 ### Phase 6 dashboard: result (2026-11-06; awaiting user review)
 
 `tests/test_dashboard_isolation.py`: **42/42** (32 probes, each with its live control; 9 cross-tenant and tenant-
