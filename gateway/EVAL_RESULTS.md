@@ -1498,10 +1498,10 @@ this system does not have. Recorded as a gap, not built.
 
 ### Phase 6 dashboard: result (2026-11-06; awaiting user review)
 
-`tests/test_dashboard_isolation.py`: **42/42** (32 probes, each with its live control; 9 cross-tenant and tenant-
-parameter probes failing as required under the tenant-scope mutation; probe coverage). The four isolation suites
-together (ACL, admin, cache, dashboard), nothing else running: **541/541**, 2 min 37 s, peak 808 MB. Full suite 790,
-smoke pass.
+`tests/test_dashboard_isolation.py`: **44/44** at option C (34 probes, each with its live control; 9 cross-tenant
+and tenant-parameter probes failing as required under the tenant-scope mutation; probe coverage). The four isolation
+suites together (ACL, admin, cache, dashboard), nothing else running: **543/543**, 2 min 29 s, peak 808 MB. Full suite
+793, smoke pass. (First build, before option C: 42/42 and 541/541.)
 
 - **One probe failed on the first run, and the code was changed, not the probe:** d026 found `@acme.example` in the
   unauthenticated shell, from the sign-in form's prefilled demo identity. The prefill was removed.

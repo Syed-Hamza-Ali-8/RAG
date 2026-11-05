@@ -8,7 +8,7 @@
       <td class="num">{{ r.ts.strftime("%m-%d %H:%M:%S") }}</td>
       <td>{{ r.email or "(deleted user)" }}</td>
       <td>{{ r.user_roles | join(", ") }}</td>
-      <td>{{ r.query_text }}</td>
+      <td>{% if r.question_visible %}{{ r.query_text }}{% else %}<span class="redacted">Question withheld: questions are not shown on this dashboard</span>{% endif %}</td>
       <td>{{ r.retrieved_ids | length }} chunks{% if r.titles %}: {{ r.titles | join("; ") }}{% endif %}{% if r.withheld %} <span class="pill">{{ r.withheld }} not shown: outside your access</span>{% endif %}</td>
       <td class="num">{{ r.denied_count }}</td>
       <td class="{{ 'refused' if r.refused else '' }}">{{ "refused" if r.refused else "answered" }}{% if r.served_from_cache %} <span class="pill">cache</span>{% endif %}</td>

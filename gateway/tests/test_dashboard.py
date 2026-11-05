@@ -90,3 +90,11 @@ async def test_shell_loads_pinned_cdn_assets_and_no_data(client: httpx.AsyncClie
     assert r.status_code == 200
     assert "htmx.org@1.9.12" in r.text and "chart.js@4.4.1" in r.text
     assert "Demo only" in r.text  # correction H: the dev issuer is labelled
+
+
+def test_question_visibility_rule() -> None:
+    from gateway.api.dashboard import question_visible
+
+    # Option C: never shown, whatever the counts (EVAL_RESULTS.md, Phase 6 dashboard).
+    for retrieved, readable, denied in ((6, 6, 0), (6, 5, 0), (5, 5, 6), (0, 0, 0)):
+        assert not question_visible(retrieved, readable, denied)

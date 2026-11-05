@@ -5,6 +5,8 @@ design).
 - `GET /v1/dashboard/{summary,feed,audit,eval}` require the admin role, read from the database per request.
   The tenant comes only from the token; no endpoint accepts a tenant, and every log query is scoped by
   `acl.tenant_predicate`. Eval judge calls are excluded from every metric.
+- Question text is never shown (option C): every row keeps its time, user, roles, outcome, counts and latency,
+  with the question replaced by a marker.
 - Never shown: answer text (`query_log.answer_raw` may quote content the admin may not read) and chunk
   content. Retrieved chunks appear as counts, plus the titles of those the admin may read
   (gateway.retrieval.titles).
@@ -17,6 +19,7 @@ import json
 from pathlib import Path
 from typing import Annotated, Any
 
+import asyncpg
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -135,12 +138,43 @@ async def summary(
     }
 
 
+def question_visible(retrieved: int, readable: int, denied: int) -> bool:
+    """Option C: question text is never shown on this dashboard. Redacting by retrieved-chunk readability,
+    then by any ACL denial, hid 97% of rows on this corpus (everyday questions sit next to role-restricted
+    chunks), so the column was withheld or arbitrary. Question text needs a dedicated audit-reviewer role,
+    which is not built (EVAL_RESULTS.md, Phase 6 dashboard, option C). This is the one switch; the isolation
+    suite's live control flips it to prove nothing else hides the text."""
+    return False
+
+
+async def _with_access(
+    conn: asyncpg.Connection, admin: AuthContext, rows: list[asyncpg.Record]
+) -> list[dict[str, Any]]:
+    """Each row with the titles the admin may read, the withheld count, and the question only when visible.
+    A redacted question is dropped here, so it never reaches a template."""
+    out = []
+    for r in rows:
+        ids = list(r["retrieved_ids"])
+        titles, readable = await readable_titles(conn, admin.acl(), ids)
+        visible = question_visible(len(ids), readable, r["denied_count"])
+        out.append(
+            {
+                **dict(r),
+                "query_text": r["query_text"] if visible else None,
+                "question_visible": visible,
+                "titles": titles,
+                "withheld": len(ids) - readable,
+            }
+        )
+    return out
+
+
 @router.get("/feed", response_class=HTMLResponse)
 async def feed(
     request: Request, admin: Admin, limit: Annotated[int, Query(ge=1, le=200)] = 50
 ) -> HTMLResponse:
     async with request.app.state.pool.acquire() as conn:
-        rows = await conn.fetch(_feed_sql(False), admin.tenant_id, limit)
+        rows = await _with_access(conn, admin, await conn.fetch(_feed_sql(False), admin.tenant_id, limit))
     return TEMPLATES.TemplateResponse(request, "_feed.html", {"rows": rows})
 
 
@@ -157,11 +191,7 @@ async def audit(
             if role
             else await conn.fetch(_feed_sql(False), admin.tenant_id, limit)
         )
-        items = []
-        for r in rows:
-            ids = list(r["retrieved_ids"])
-            titles, readable = await readable_titles(conn, admin.acl(), ids)
-            items.append({**dict(r), "titles": titles, "withheld": len(ids) - readable})
+        items = await _with_access(conn, admin, rows)
     return TEMPLATES.TemplateResponse(request, "_audit.html", {"rows": items, "role": role})
 
 

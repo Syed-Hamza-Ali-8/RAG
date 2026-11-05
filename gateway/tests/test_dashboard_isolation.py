@@ -21,6 +21,7 @@ import pytest
 from fastapi import Depends
 from openai.types.chat import ChatCompletionMessageParam
 
+from gateway.api import dashboard
 from gateway.config import Settings
 from gateway.deps import AuthContext, get_auth_context, require_admin
 from gateway.ingest.embedder import Embedder
@@ -204,6 +205,12 @@ async def _live(
         return (
             None if c["tenant_only_acl_shows"] in body else f"{pid}: the title is absent even without the ACL"
         )
+    if "without_redaction_shows" in c:
+        with mp.context() as m:
+            m.setattr(dashboard, "question_visible", lambda retrieved, readable, denied: True)
+            body = (await _get(dash, pool, probe["as"], probe["path"])).text
+        shown = c["without_redaction_shows"] in body
+        return None if shown else f"{pid}: the question is absent even without the redaction check"
     if "baseline_contains" in c:
         baselines = [p.read_text() for p in dash["settings"].eval_baselines_dir.glob("phase-*.json")]
         return None if any(c["baseline_contains"] in b for b in baselines) else f"{pid}: no baseline holds it"
@@ -239,7 +246,7 @@ async def test_without_the_tenant_scope_cross_tenant_probes_fail(
 
 def test_every_probe_is_covered() -> None:
     ids = [p["id"] for p in PROBES]
-    assert len(ids) == len(set(ids)) == 32
+    assert len(ids) == len(set(ids)) == 34
     known = {
         "dashboard_cross_tenant",
         "dashboard_tenant_param",
@@ -249,5 +256,6 @@ def test_every_probe_is_covered() -> None:
         "dashboard_eval",
         "dashboard_stale_admin",
         "dashboard_markup_injection",
+        "dashboard_question_redaction",
     }
     assert {p["category"] for p in PROBES} == known
