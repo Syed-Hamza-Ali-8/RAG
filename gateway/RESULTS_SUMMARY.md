@@ -1,4 +1,4 @@
-# Gateway: results summary (Phases 1-4)
+# Gateway: results summary (Phases 1-5)
 
 Every number here is taken from `EVAL_RESULTS.md`, whose section for each is named in brackets. Corpus: 50 synthetic
 documents, two tenants, 251 chunks; golden set: 100 questions (85 answerable, 15 unanswerable), each asked as a real
@@ -48,8 +48,40 @@ over 20 queries [Phase 1 — Baseline latency].
   variance, not a Phase 4 effect. Cost per query moved −5.1% [Phase 4 gate: results].
 - Correct 75/85 against Phase 3's 77/85, within the noise band set in advance; faithful 79/80 [Phase 4 Run A].
 
+## Phase 5: hybrid retrieval and GraphRAG
+- **Hybrid retrieval (vector + Postgres full-text, fused with RRF) ships.** Multi-hop correct rose from 18/25 to
+  **21/25** (top of the +1 to +3 predicted), single-hop from 47/50 to **49/50**, and false refusals fell from **4 to
+  0** [Phase 5 gate: results]. Retrieval alone: buried-fact recall@6 18/20 → 20/20, multi-hop all-hops@6 11/25 →
+  14/25, both gains from items that share a rare word with their evidence, as predicted [M1 measured].
+- **It also produced the project's first hallucination on an unanswerable question.** Asked which law firm represents
+  Globex, the system named a person listed as legal counsel in a related agreement and cited a real, permitted,
+  on-topic chunk: unanswerable questions refused fell from 15/15 to **14/15**. Citations supported fell from **0.925
+  to 0.869**. In q064, keyword retrieval brought in measured availability and the answer presented it as committed
+  availability; for q090 the mechanism is not established. The citation check is blind to both: the cited chunk
+  exists, is permitted and supports the sentence, but holds a fact adjacent to the question, not the answer. **For an
+  internal assistant in a law firm, 3 more correct answers against 1 confident wrong one is probably a bad trade**;
+  it ships as measured, with that cost on the record [Phase 5 headline finding].
+- **The graph layer ships off.** Entities and relations were extracted from all 251 chunks (99.2% valid on the first
+  attempt; USD 0.057 at list price). The walk reached every hop it needed (16 of 16 within depth 2), but fused into
+  retrieval it pushed multi-hop all-hops@6 from 14/25 down to **9/25**, and always-on it pushed the evidence for 18
+  single-hop questions out of the top 6; ordered by relevance (one pre-registered final attempt) it did no harm and
+  gained nothing (14/25). **Hub entities ("Acme" on 50 of its 133 chunks) make the reachable set so large that the
+  graph list is near-arbitrary: traversal recall was not the binding constraint, ranking was.** A feasibility probe on
+  54 chunks had resolved 3 of 5 target questions; none survived the full graph [Phase 5 M2 (GraphRAG): the graph layer
+  did not help; M2 option A].
+- **Reasoning models spend the completion budget on reasoning.** Extraction truncated on each of its first three
+  calls until reasoning effort was lowered (80% of one call's tokens were reasoning), and the judge truncated on 3 of
+  84 answers until re-judged at a higher limit; each change was recorded before it was used [M2 probe deviation; Phase
+  5 gate run].
+- **A green suite proved nothing.** The isolation suites passed 495/495, but the test database held no graph, so both
+  graph modes walked an empty one; it was found by asking what the tests demonstrate, not whether they pass. The real
+  graph is now loaded into the suites, and every path must both return data and leak under its own mutant (of 37
+  probes: vector 37 and 37, keyword 36 and 37, graph 37 and 37). Final run 499/499 [Isolation suites: a false pass
+  found and closed].
+
 ## How these numbers were produced
 Every expectation, threshold and pass criterion was written down and committed before the run that tested it,
-misses included (for example: the large model was predicted to use more tokens and used fewer). Free-tier budgets
+misses included (for example: the large model was predicted to use more tokens and used fewer). Every change to a
+pre-registered setup was recorded as a deviation before it was used. Free-tier budgets
 split full runs across days; nothing was forced past a budget or safety check. Each phase is compared only with the
 one before it.
