@@ -96,39 +96,57 @@ answerable, 15 unanswerable), each asked as a real seeded user with that user's 
 
 ## Setup
 
-Prerequisites: Docker, [uv](https://docs.astral.sh/uv/), and a free Groq API key. Commands run from this directory
-(WSL or Linux).
+Prerequisites: Docker (with Compose) and a free Groq API key. From a fresh clone:
 
 ```bash
-cp .env.example .env        # then set LLM_SMALL_API_KEY, LLM_LARGE_API_KEY, JWT_SECRET and EMBEDDING_CACHE_DIR
-docker compose up -d --wait # Postgres 17 + pgvector, Redis
-uv sync
-uv run python scripts/resolve_models.py   # lists the provider's live models; then --small ID --large ID writes them to .env
-uv run python scripts/migrate.py
-uv run python scripts/seed_corpus.py      # two demo tenants, their users and the synthetic corpus
-uv run uvicorn gateway.main:app
+git clone https://github.com/Syed-Hamza-Ali-8/RAG.git
+cd RAG/gateway
+cp .env.example .env          # then set the 5 values below
+docker compose up -d --wait   # builds the app, migrates, seeds the demo corpus, serves on :8000
 ```
 
-This is seven commands. Packaging the app into a single `docker compose up` is the next step of this phase, and this
-section will be replaced by that setup once a fresh clone has been shown to work with it.
+Four commands, plus five values in `.env`: `LLM_SMALL_API_KEY` and `LLM_LARGE_API_KEY` (the same Groq key works for
+both), `LLM_SMALL_MODEL_ID` and `LLM_LARGE_MODEL_ID` (the measurements used `openai/gpt-oss-20b` and
+`openai/gpt-oss-120b`), and `JWT_SECRET` (any long random string; also change `POSTGRES_PASSWORD`). On start the app
+checks the model IDs against Groq's live model list and stops with the valid IDs listed if one is wrong.
 
-Then ask a question as a seeded user (the token issuer is a **demo issuer**: it identifies a seeded user by tenant
-and email with no password, and is disabled unless `AUTH_DEV_ISSUER_ENABLED=true`; a production deployment plugs in
-the client's identity provider):
+**Measured on a fresh clone** from GitHub (2026-11-06, a Windows checkout run from WSL2, Docker Desktop, 7.8 GB
+machine), with only `.env` filled in:
+
+| Step | Time |
+|---|---|
+| Building the app image with no build cache | 222 s (excludes downloading the `python:3.12-slim` and `uv` base images, already present) |
+| First start: model check, migrations, embedding-weights download, seeding 50 documents / 251 chunks | 211 s |
+| Later restarts (seeding is skipped) | 17 s |
+
+A single `docker compose up -d --wait` does both the build and the first start (about 7 minutes in total here); it
+was measured as two steps to separate the times. The first query then worked as below, with no entities or relations
+in the database: the graph layer ships off, and the shipped retrieval is hybrid (vector + full-text).
+
+Ask the same question as two seeded users. The token issuer is a **demo issuer**: it identifies a seeded user by
+tenant and email with no password, and is disabled unless `AUTH_DEV_ISSUER_ENABLED=true`; a production deployment
+plugs in the client's identity provider.
 
 ```bash
-TOKEN=$(curl -s -X POST localhost:8000/v1/auth/token -H 'Content-Type: application/json' \
-  -d '{"tenant": "acme", "email": "employee@acme.example"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
-curl -s -X POST localhost:8000/v1/query -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"question": "How many days of paid annual leave do full-time Acme employees get?"}'
+ask() {
+  TOKEN=$(curl -s -X POST localhost:8000/v1/auth/token -H 'Content-Type: application/json' \
+    -d "{\"tenant\": \"acme\", \"email\": \"$1\"}" | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+  curl -s -X POST localhost:8000/v1/query -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+    -d '{"question": "How many days of paid annual leave do full-time Acme employees get?"}'; echo
+}
+ask hr@acme.example        # 22 working days, cited from the Leave Policy and the Employee Handbook
+ask employee@acme.example  # refused: the leave policy is restricted to HR, so it never reaches the model
 ```
 
 The dashboard is at `http://localhost:8000/dashboard`; sign in as `admin@acme.example` (tenant `acme`) or
-`admin@globex.example` (tenant `globex`).
+`admin@globex.example` (tenant `globex`). Stop with `docker compose down`; `docker compose down -v` also deletes the
+database and the downloaded weights.
 
-Verification: `uv run ruff check . && uv run mypy gateway/ && uv run pytest -q && uv run python scripts/smoke.py`.
-The golden-set evaluation is `uv run python eval/run_eval.py`; a full run needs more than one day of the free tier's
-token budget and resumes with `--resume`.
+**Development** (tests, evals) runs the app on the host instead: `docker compose up -d --wait postgres redis`, then
+`uv sync`, `uv run python scripts/migrate.py`, `uv run python scripts/seed_corpus.py` and
+`uv run uvicorn gateway.main:app`. Verification: `uv run ruff check . && uv run mypy gateway/ scripts/ eval/ &&
+uv run pytest -q && uv run python scripts/smoke.py`. The golden-set evaluation is `uv run python eval/run_eval.py`; a
+full run needs more than one day of the free tier's token budget and resumes with `--resume`.
 
 ## Limitations
 

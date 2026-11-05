@@ -1513,6 +1513,47 @@ suites together (ACL, admin, cache, dashboard), nothing else running: **543/543*
   before Phase 4), so the modelled saving (USD 0.093, hits x mean answered-miss cost) exceeded the recorded shadow
   total (USD 0.037). The summary now returns `costed_queries`, and the page states how many queries carry a cost.
 
+## Phase 6 fresh-clone check (2026-11-06)
+
+**Gate item: fresh clone → `docker compose up` → seeded demo → working query, nothing manual beyond `.env`.**
+
+**Rehearsal first** (a clone of the local repository into `~/gateway_fresh_rehearsal`, own compose project, ports and
+volumes, so nothing of the dev stack was visible). It found what breaks between "works on my machine" and "works from
+a clone"; each was fixed before the real check:
+1. **The entrypoint was not executable.** The repository is on NTFS, where git records no file mode
+   (`core.filemode=false`), so the clone checked the script out 644 and the container could not start it. The mode
+   is now set in the Dockerfile (`COPY --chmod=0755`), independent of the checkout, and recorded in git.
+2. **The README's own example query was always refused.** It asked about annual leave as `employee@acme.example`;
+   the leave policy is HR-only. It had been written without running it as that user. The README now asks the same
+   question as HR (answered) and as an employee (refused), which is the ACL in one example.
+3. **`scripts/resolve_models.py` had been broken since Phase 4.** `with_retry` gained three required arguments and
+   the script was never updated; the verification loop's mypy covered `gateway/` only. Fixed, and the loop now runs
+   `mypy gateway/ scripts/ eval/` (it found three further type errors from reused variable names; none a runtime bug).
+4. **A wrong model ID was found late:** a blank one after ~2 minutes of seeding, a mistyped one at the first query.
+   The container now checks the configured ID against the provider's live roster before migrating or seeding, and
+   stops with the valid IDs listed (tested with a mistyped ID: exits in seconds).
+5. Also: `APP_HOST_PORT` documented in `.env.example`; a plain `docker compose up` now starts the app, so the
+   development command is `docker compose up -d --wait postgres redis`.
+
+**The real check**: cloned from GitHub on Windows to `D:\hamza\gateway_fresh` (HEAD `e727330`, clean tree, LF
+endings kept), run from WSL2 with its own compose project and ports (`-p gwfresh`; 5433, 6381, 8001) so the dev
+stack's volumes could not be reused. Only `.env` was written: 9 keys, of which 5 are required of a real user (two API
+keys, two model IDs, `JWT_SECRET`); the others are the Postgres password and the three port moves this machine needed.
+
+| Step | Result |
+|---|---|
+| Build, `docker compose build --no-cache --pull` | **222 s**, every build step executed; the two base images were already present, so their download is not included |
+| First start, `docker compose up -d --wait` | **211 s** to healthy: roster check, 11 migrations, weights download into a new volume, 50 documents / 251 chunks seeded (seeding 119 s) |
+| Restart (rehearsal) | 17 s; seeding skipped ("corpus already seeded") |
+| Query, HR, annual leave | answered, "22 working days", cited Leave Policy and Employee Handbook |
+| Same query, employee | refused |
+| Dashboard | shell 200; the admin's summary counts the 2 queries |
+| Graph | 0 entities, 0 relations, 0 extraction rows; the container reports `RETRIEVAL_MODE=hybrid`, routing off, cache on |
+| README snippet | extracted from README.md and run verbatim (port substituted): both outcomes as stated |
+
+**Nothing broke in the real check**, because the rehearsal had already found the breaks. The README's setup section
+claims exactly this: four commands plus five `.env` values, with the measured times.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
