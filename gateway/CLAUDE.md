@@ -80,7 +80,7 @@ Verification loop. Run it after every implementation step and run every step tha
 All four are mandatory from Phase 2 onward:
 ```bash
 uv run ruff check .
-uv run mypy gateway/
+uv run mypy gateway/ scripts/ eval/
 uv run pytest -q
 uv run python scripts/smoke.py   # must fail loudly if `docker ps` fails
 ```
