@@ -57,7 +57,9 @@ def check_stack() -> StackStatus:
         svc = running.get(name)
         if svc is None or svc.get("Health") != "healthy":
             state = "not running" if svc is None else f"{svc.get('State')}/{svc.get('Health') or 'no health'}"
-            raise StackNotReady(f"compose service {name} is {state}; run `docker compose up -d --wait`")
+            raise StackNotReady(
+                f"compose service {name} is {state}; run `docker compose up -d --wait postgres redis`"
+            )
         status.services[name] = "healthy"
     return status
 

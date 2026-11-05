@@ -10,6 +10,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, "eval")
 
@@ -26,7 +27,7 @@ def gid(c: RetrievedChunk) -> str:
     return f"{c.document_slug}#{c.ordinal}"
 
 
-async def main(items: list[dict], m1: dict[str, dict]) -> None:
+async def main(items: list[dict[str, Any]], m1: dict[str, dict[str, Any]]) -> None:
     s = get_settings()
     emb = await asyncio.to_thread(Embedder, s.embedding_model_id, s.embedding_dim, s.embedding_cache_dir)
     pool = await create_pool(s.database_dsn)

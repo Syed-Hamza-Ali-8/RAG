@@ -10,6 +10,7 @@ Read-only; no LLM calls. Output committed as eval/phase5/m2_graph_ceiling.txt.
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 from gateway.config import get_settings
 from gateway.db import create_pool
@@ -31,7 +32,7 @@ def rrf_score(g: str, lists: tuple[list[str], ...]) -> float:
     return sum(1 / (K + lst.index(g) + 1) for lst in lists if g in lst)
 
 
-async def main(items: list[dict], m1: dict[str, dict]) -> None:
+async def main(items: list[dict[str, Any]], m1: dict[str, dict[str, Any]]) -> None:
     s = get_settings()
     emb = await asyncio.to_thread(Embedder, s.embedding_model_id, s.embedding_dim, s.embedding_cache_dir)
     pool = await create_pool(s.database_dsn)

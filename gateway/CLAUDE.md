@@ -64,7 +64,7 @@ Phases (gates in §5): 2 Eval · 3 Multi-tenancy/ACL · 4 Cache + routing · 5 G
 
 ```bash
 docker ps                                   # prerequisite; must succeed
-docker compose up -d --wait                 # postgres+pgvector, redis
+docker compose up -d --wait postgres redis  # dev: DB + Redis only (plain `up` also runs the app on :8000)
 docker compose down -v                      # full reset (drops volumes)
 uv sync                                     # install from uv.lock
 uv add <pkg>                                # only way to add a dependency

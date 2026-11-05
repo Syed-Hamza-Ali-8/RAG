@@ -204,9 +204,9 @@ async def run(delay_ms: int, rounds: int) -> None:
     header = "# Evaluation Results\n\nEvery number here is produced by a script in this repo.\n\n"
     text = RESULTS.read_text(encoding="utf-8") if RESULTS.exists() else header
     if SECTION in text:
-        before, _, after = text.partition(SECTION)
-        rest = after.split("\n## ", 1)
-        text = before + section + ("\n## " + rest[1] if len(rest) > 1 else "")
+        head, _, after = text.partition(SECTION)
+        following = after.split("\n## ", 1)
+        text = head + section + ("\n## " + following[1] if len(following) > 1 else "")
     else:
         text = text.rstrip("\n") + "\n\n" + section
     RESULTS.write_text(text, encoding="utf-8")

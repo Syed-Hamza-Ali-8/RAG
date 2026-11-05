@@ -1,7 +1,7 @@
 """Seed demo tenants, users and the corpus/ documents with per-folder ACLs (see gateway.ingest.seed).
 
-    uv run python scripts/seed_corpus.py              # (re)ingest everything
-    uv run python scripts/seed_corpus.py --if-empty   # only when no document exists yet (container start)
+uv run python scripts/seed_corpus.py              # (re)ingest everything
+uv run python scripts/seed_corpus.py --if-empty   # only when no document exists yet (container start)
 """
 
 import argparse
