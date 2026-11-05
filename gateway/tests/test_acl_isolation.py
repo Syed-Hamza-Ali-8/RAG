@@ -35,10 +35,16 @@ from gateway.config import Settings
 from gateway.ingest.embedder import Embedder
 from gateway.llm.prompts import REFUSAL_MESSAGE
 from gateway.main import create_app
+from gateway.retrieval.graph import graph_search
+from gateway.retrieval.hybrid import HybridConfig, hybrid_search
+from gateway.retrieval.keyword import keyword_search
+from gateway.retrieval.vector import RetrievedChunk, vector_search
+from gateway.routing.classifier import complexity
 from gateway.security import acl
+from gateway.security.acl import AclFilter
 from gateway.security.tokens import issue_token
 from run_eval import load_golden
-from tests.conftest import StubLLM
+from tests.conftest import StubLLM, load_real_graph
 from verify_adversarial import LIVE_K, load, permitted
 
 PROBES = load()
@@ -105,9 +111,16 @@ async def _apps(settings: Settings, embedder: Embedder, mode: str) -> AsyncItera
 
 @pytest.fixture(scope="module", params=["vector", "hybrid", "hybrid_graph", "hybrid_graph_gated"])
 async def apps(
-    request: pytest.FixtureRequest, settings: Settings, corpus: dict[str, UUID], embedder: Embedder
+    request: pytest.FixtureRequest,
+    settings: Settings,
+    corpus: dict[str, UUID],
+    embedder: Embedder,
+    pool: asyncpg.Pool,
 ) -> AsyncIterator[dict[str, Any]]:
-    """P1-P4 and the rejection probes run against every retrieval mode: each path filters ACLs itself."""
+    """P1-P4 and the rejection probes run against every retrieval mode: each path filters ACLs itself. The
+    graph modes walk the graph extracted from the real corpus, not an empty one."""
+    if "graph" in request.param:
+        await load_real_graph(pool)
     async with _apps(settings, embedder, request.param) as a:
         yield a
 
@@ -342,6 +355,100 @@ async def test_every_probe_leaks_without_the_predicate(
         f"{probe['id']} is not live: with the predicate removed its forbidden strings still did not reach "
         "the answer, so this probe cannot detect a missing ACL"
     )
+
+
+# --- Every path is live: it returns data for the probes, and its own predicate is what stops a leak. ----
+# Invariant 18: a suite that passes because the path under test returns nothing is a false pass. The rule,
+# fixed before it was first run: for each path queried on its own, (live) it returns at least one chunk for
+# at least one leak probe with the real predicate, and (teeth) with that path's predicate replaced by the
+# probe's mutant it returns at least one chunk the probe's user may not read. The graph walk is seeded from
+# the hybrid top 6 under the real predicate, as in production, and only the walk is mutated.
+
+PATH_PROBES = [p for p in LEAK_PROBES if not p.get("setup")]
+
+
+async def _path_hits(
+    conn: asyncpg.Connection, path: str, f: AclFilter, question: str, vec: list[float], seeds: list[UUID]
+) -> list[RetrievedChunk]:
+    if path == "vector":
+        return await vector_search(conn, acl_filter=f, query_embedding=vec, top_k=LIVE_K)
+    if path == "keyword":
+        return await keyword_search(conn, acl_filter=f, question=question, query_embedding=vec, top_k=LIVE_K)
+    return await graph_search(
+        conn, acl_filter=f, seed_chunk_ids=seeds, query_embedding=vec, max_depth=2, top_k=20
+    )
+
+
+@pytest.fixture(scope="module")
+async def real_graph(pool: asyncpg.Pool, corpus: dict[str, UUID]) -> tuple[int, int]:
+    return await load_real_graph(pool)
+
+
+@pytest.mark.parametrize("path", ["vector", "keyword", "graph"])
+async def test_each_path_is_live_and_its_predicate_has_teeth(
+    path: str,
+    pool: asyncpg.Pool,
+    embedder: Embedder,
+    real_graph: tuple[int, int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    returned = leaked = 0
+    async with pool.acquire() as conn:
+        for probe in PATH_PROBES:
+            user = await _user(conn, probe["tenant"], probe["as_user"])
+            f = AclFilter(user["tenant_id"], tuple(user["roles"]), user["clearance"])
+            vec = await embedder.embed_query(probe["question"])
+            fused = await hybrid_search(
+                conn,
+                acl_filter=f,
+                question=probe["question"],
+                query_embedding=vec,
+                top_k=6,
+                config=HybridConfig(),
+            )
+            seeds = [c.chunk_id for c in fused]
+            returned += bool(await _path_hits(conn, path, f, probe["question"], vec, seeds))
+            with monkeypatch.context() as m:
+                m.setattr(acl, "acl_predicate", _mutant_for(probe))
+                hits = await _path_hits(conn, path, f, probe["question"], vec, seeds)
+            rows = await conn.fetch(
+                "SELECT c.id, t.slug AS tenant, c.allowed_roles, c.min_clearance FROM chunks c "
+                "JOIN tenants t ON t.id = c.tenant_id WHERE c.id = ANY($1::uuid[])",
+                [h.chunk_id for h in hits],
+            )
+            leaked += any(
+                not permitted(dict(r), probe["tenant"], list(user["roles"]), user["clearance"]) for r in rows
+            )
+    print(
+        f"\n{path}: returned data for {returned}/{len(PATH_PROBES)} probes; leaked under its mutant: {leaked}"
+    )
+    assert returned >= 1, f"{path} path is dead: it returned nothing for any of {len(PATH_PROBES)} probes"
+    assert leaked >= 1, f"{path} path has no teeth: with its predicate removed it leaked for no probe"
+
+
+async def test_the_gated_mode_opens_the_graph_for_some_probe(pool: asyncpg.Pool, embedder: Embedder) -> None:
+    # The gated mode walks only when the complexity score reaches the gate; if no probe opens it, the gated
+    # mode's graph path is never exercised by this suite.
+    gate = HybridConfig(graph=True, graph_gate=0.38).graph_gate
+    assert gate is not None
+    scores = []
+    async with pool.acquire() as conn:
+        for probe in PATH_PROBES:
+            user = await _user(conn, probe["tenant"], probe["as_user"])
+            f = AclFilter(user["tenant_id"], tuple(user["roles"]), user["clearance"])
+            vec = await embedder.embed_query(probe["question"])
+            fused = await hybrid_search(
+                conn,
+                acl_filter=f,
+                question=probe["question"],
+                query_embedding=vec,
+                top_k=LIVE_K,
+                config=HybridConfig(),
+            )
+            scores.append((complexity(probe["question"], [c.score for c in fused]).score, probe["id"]))
+    opened = [pid for s, pid in scores if s >= gate]
+    print(f"\ngated: {len(opened)}/{len(scores)} probes open the gate: {opened}")
+    assert opened, f"no probe reaches the gate {gate}; highest scores {sorted(scores, reverse=True)[:3]}"
 
 
 # --- Every query that reads chunks goes through the predicate. ----------------------------------------

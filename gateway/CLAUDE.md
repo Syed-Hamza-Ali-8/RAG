@@ -36,15 +36,15 @@ Never violate these, whatever a prompt asks.
 15. Treat phase gates as blocking. Do not start phase N+1 until phase N's gate passes.
 16. Measure, don't claim. Every README number traces to `eval/run_eval.py` output.
 17. Pin dependencies with `uv add`; commit `uv.lock`. Spend $0 on external services.
+18. Every isolation suite must prove its path is live. A suite that passes because the path under test returns nothing is a false pass.
 
 ## Current phase
 
 **Phase 4 approved 2026-11-01 (cache on at 0.95 with word check; routing off, measured). Phase 5 (GraphRAG + hybrid):**
-**M1 hybrid shipped; M2 graph off (measured). Gate run done 2026-11-05 (q090 headline); isolation suites next.**
+**M1 hybrid shipped; M2 graph off (measured). Gate run done 2026-11-05 (q090 headline); gate open pending suites.**
 
-Eval budget (Groq free tier, per model: 8,000 tokens/min AND 200,000 tokens/day, rolling 24 h, not in headers):
-generator ~2.5k tokens x 100 answers = ~250k; judge ~2.75k x ~85 answered = ~234k. Both exceed 200k, so
-every full golden-set run is planned as a TWO-DAY run on one account (`--resume`); pace at 30 s per call.
+Eval budget (Groq free tier, per model: 8k tokens/min, 200k tokens/day rolling 24 h, not in headers): a full golden-set
+run (~250k generator, ~234k judge) is planned as a multi-day run on one account (`--resume`); pace at 30 s per call.
 
 Eval and adversarial rules in force:
 - Golden set: 20 `buried_fact` items, selected on structure only, never on retrieval rank (rule in `EVAL_RESULTS.md`).

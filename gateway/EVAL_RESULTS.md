@@ -1313,8 +1313,9 @@ supports the claim — and in both cases all three hold. The fact retrieved is a
 answer to it: legal counsel instead of a law firm, measured instead of committed. That class of error is invisible to
 every guardrail in the system.
 
-This is the cost of the Phase 5 gain, and it is not a bug to fix in this phase. It is a structural limit of lexical
-retrieval plus a citation-existence check, and it is now measured: 1 hallucination in 15 unanswerable questions, and
+This is the cost of the Phase 5 gain, and it is not a bug to fix in this phase. For q064 this is a structural limit
+of lexical retrieval combined with a citation-existence check; for q090 the mechanism is unestablished, but the
+blindness of the citation check is the same in both. It is now measured: 1 hallucination in 15 unanswerable questions, and
 citations_supported down from 0.925 to **0.869** (73 of 84 answered items; 0.878 before q055 and q056 were
 re-judged, when q055's verdict marked one of its citations unsupported).
 
@@ -1330,7 +1331,7 @@ answer naming the wrong party is the failure a firm buys this product to avoid, 
 convincing, not less. Phase 5 ships what was measured: `RETRIEVAL_MODE=hybrid`, with this cost on the record. Nothing
 has been changed to address it in this phase.
 
-## Phase 5 gate: results (2026-11-05; isolation suites pending, then user approval)
+## Phase 5 gate: results (2026-11-06; all items evidenced, awaiting user approval)
 
 Gate run: `eval/baselines/phase-5.json` (run `20261103T200805Z_full`, three sessions at `2e0fb1a`, `4dc3fd9`,
 `952745f`; the third only re-judged q055 and q056). Judged against Phase 4; Phase 2 reported beside it.
@@ -1356,10 +1357,57 @@ Gate run: `eval/baselines/phase-5.json` (run `20261103T200805Z_full`, three sess
 |---|---|---|
 | Multi-hop accuracy improves over Phase 2; report both | 18/25 (Phase 2) → 21/25; against Phase 4 also 18 → 21 | **pass** |
 | Single-hop does not regress | 47/50 (Phase 4) → 49/50; 45/50 in Phase 2 | **pass** |
-| Graph traversal respects ACLs (adversarial suite) | isolation suites incl. both graph modes, full, quiet machine | **pending** |
+| Graph traversal respects ACLs (adversarial suite) | three isolation suites in full against the **real extracted graph**, quiet machine: **499/499** (section below) | **pass** |
 | Extraction cost and ingestion time per document | `eval/phase5/m2_extraction_report.md` (section above) | **pass** |
 
 The gate's quality items pass, and the Phase 5 headline finding above is the cost that comes with them.
+
+### Isolation suites: a false pass found and closed (2026-11-05/06)
+
+**What the first run proved, and what it did not.** The three suites ran green at `fac7afa` (495/495). Asked what
+they demonstrate rather than whether they pass, the graph modes proved nothing: the test database is seeded with
+the real corpus, but extraction never runs there, so it held **no entities and no relations**. In both graph modes
+the graph path returned nothing, and 164 tests re-tested vector + FTS. The entity-leak probes (a033-a038), written
+for the graph, had never run against an extracted graph. The suite's one mutation test (every probe leaks with the
+predicate removed) ran in vector mode only, so the keyword path had never been shown live either.
+
+**Fix (strengthens, weakens nothing):**
+- `tests/fixtures/graph_extract_v1_low.json`: the graph extracted from the real corpus (697 entities, 1,147
+  relations; entity names and relation labels only), exported by `scripts/export_graph_fixture.py` and keyed by
+  tenant, document slug and chunk ordinal. `tests/conftest.py: load_real_graph` loads it into the test database
+  (failing loudly if any provenance chunk is missing) before either graph mode runs.
+- `test_each_path_is_live_and_its_predicate_has_teeth`: each path queried on its own, rule fixed before its first
+  run (live: data for at least one leak probe under the real predicate; teeth: under that path's mutant, at least
+  one chunk the probe's user may not read).
+- `test_the_gated_mode_opens_the_graph_for_some_probe`.
+- CLAUDE.md invariant 18: every isolation suite must prove its path is live.
+
+**Result** (37 leak probes without a database setup step):
+
+| path | returns data, real predicate | leaks under its own mutant |
+|---|---|---|
+| vector | 37/37 | 37/37 |
+| keyword | 36/37 | 37/37 |
+| graph (real graph, seeded from the hybrid top 6) | 37/37 | 37/37 |
+
+- **Gated mode is live but thin: 3 of 37 probes open the gate (a025, a026, a027).** The entity-leak probes a033-a038
+  do not reach 0.38, so in gated mode they never walk the graph. Graph ACLs on every probe are exercised by the
+  always-fuse mode; the gated mode adds no path the always-fuse mode does not already test. Recorded, not fixed:
+  adding probes that open the gate would be new adversarial cases, committed before any code they test.
+- **Full run** at `<COMMIT>`: `test_acl_isolation.py`, `test_admin_isolation.py` and `test_cache_isolation.py` together,
+  nothing else from this project running, 7.8 GB machine: **499/499 passed** (374 + 27 + 98), 4 min 05 s, peak 805 MB.
+  Full suite 742/742 and smoke pass on the same tree.
+
+**Audit of the other paths the suites claim to cover:**
+- **Cache suite: live.** Every probe fails as "not live" unless its populate request stored an entry and the stored
+  answer holds the forbidden strings; mutation tests remove each key component (role signature, tenant scope, word
+  check) together with the readability re-check and require the probes to fail; a separate test shows the re-check
+  alone stops restricted values. It runs in the shipped retrieval mode (hybrid).
+- **Admin suite: live.** A cross-tenant 404 counts only if the target's own admin can read it; a 403 counts only if
+  removing the role check changes it; `same_as_missing` probes must match a random id's response exactly.
+- **Keyword path:** the test database's chunks carry the generated `content_tsv`, and the path returns data for 36
+  of 37 probes; it was live, but no test had shown it. It is now covered by the per-path test.
+- **Vector path:** live, as before (the existing mutation test, plus the per-path test).
 
 ## Measurement notes
 

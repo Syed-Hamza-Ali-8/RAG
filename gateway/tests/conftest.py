@@ -1,6 +1,7 @@
 """Shared fixtures. DB tests run against TEST_POSTGRES_DB on the compose Postgres, which is
 dropped and recreated per session. If Postgres is unreachable the tests fail, not skip."""
 
+import json
 import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
@@ -142,3 +143,60 @@ class StubLLM:
 @pytest.fixture
 def stub_llm() -> StubLLM:
     return StubLLM()
+
+
+GRAPH_FIXTURE = ROOT / "tests" / "fixtures" / "graph_extract_v1_low.json"
+
+
+async def load_real_graph(pool: asyncpg.Pool) -> tuple[int, int]:
+    """Replace acme's and globex's graph in the test database with the one extracted from the real corpus
+    (scripts/export_graph_fixture.py), so the graph modes of the isolation suites walk real relations rather
+    than an empty graph. Idempotent; call it after anything that re-ingests documents (relations cascade
+    with their chunks). Raises if a relation's provenance chunk is not in the seeded corpus."""
+    data = json.loads(GRAPH_FIXTURE.read_text(encoding="utf-8"))
+    async with pool.acquire() as conn, conn.transaction():
+        tenants = {
+            r["slug"]: r["id"]
+            for r in await conn.fetch(
+                "SELECT slug, id FROM tenants WHERE slug = ANY($1::text[])", ["acme", "globex"]
+            )
+        }
+        await conn.execute("DELETE FROM entities WHERE tenant_id = ANY($1::uuid[])", list(tenants.values()))
+        ids: dict[tuple[str, str], UUID] = {}
+        for e in data["entities"]:
+            ids[(e["tenant"], e["norm"])] = await conn.fetchval(
+                "INSERT INTO entities (tenant_id, name, norm, entity_type, aliases) "
+                "VALUES ($1, $2, $3, $4, $5) RETURNING id",
+                tenants[e["tenant"]],
+                e["name"],
+                e["norm"],
+                e["entity_type"],
+                e["aliases"],
+            )
+        chunk = {
+            (r["tenant"], r["slug"], r["ordinal"]): r["id"]
+            for r in await conn.fetch(
+                "SELECT t.slug AS tenant, d.slug, c.ordinal, c.id FROM chunks c "
+                "JOIN documents d ON d.id = c.document_id JOIN tenants t ON t.id = c.tenant_id "
+                "WHERE c.tenant_id = ANY($1::uuid[])",
+                list(tenants.values()),
+            )
+        }
+        missing = [r for r in data["relations"] if (r["tenant"], r["document"], r["ordinal"]) not in chunk]
+        if missing:
+            raise RuntimeError(f"graph fixture: {len(missing)} relations cite chunks missing from the corpus")
+        await conn.executemany(
+            "INSERT INTO relations (tenant_id, source_id, target_id, relation, chunk_id) "
+            "VALUES ($1, $2, $3, $4, $5)",
+            [
+                (
+                    tenants[r["tenant"]],
+                    ids[(r["tenant"], r["source"])],
+                    ids[(r["tenant"], r["target"])],
+                    r["relation"],
+                    chunk[(r["tenant"], r["document"], r["ordinal"])],
+                )
+                for r in data["relations"]
+            ],
+        )
+    return len(data["entities"]), len(data["relations"])
