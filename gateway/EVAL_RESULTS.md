@@ -1394,7 +1394,7 @@ predicate removed) ran in vector mode only, so the keyword path had never been s
   do not reach 0.38, so in gated mode they never walk the graph. Graph ACLs on every probe are exercised by the
   always-fuse mode; the gated mode adds no path the always-fuse mode does not already test. Recorded, not fixed:
   adding probes that open the gate would be new adversarial cases, committed before any code they test.
-- **Full run** at `<COMMIT>`: `test_acl_isolation.py`, `test_admin_isolation.py` and `test_cache_isolation.py` together,
+- **Full run** at `f171263` (code; this record committed after it): `test_acl_isolation.py`, `test_admin_isolation.py` and `test_cache_isolation.py` together,
   nothing else from this project running, 7.8 GB machine: **499/499 passed** (374 + 27 + 98), 4 min 05 s, peak 805 MB.
   Full suite 742/742 and smoke pass on the same tree.
 
