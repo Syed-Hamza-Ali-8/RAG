@@ -1474,6 +1474,28 @@ retrieved chunk that no longer exists cannot be checked, so it also redacts.
   acme audit log: the first rule redacts 843 of 971 rows, the tightened rule 944 (101 more). It over-redacts where
   the admin could have read the denied chunks (their ids are not recorded). The probes are unchanged.
 
+### Phase 6 dashboard: no question text (option C, user decision 2026-11-06, before the code change)
+
+**Finding (user-worded):** The dashboard shows no question text. We first tried redacting questions whose retrieved
+chunks the admin couldn't read, then questions where the ACL denied anything. On this corpus the second rule hid
+97% of rows: everyday questions — office hours, annual leave, expense claims — have all six nearest chunks in
+role-restricted documents, so almost every question is 'aimed at' restricted content. A column that is 97% withheld
+and otherwise arbitrary is worse than no column. Question text belongs behind a dedicated audit-reviewer role, which
+this system does not have. Recorded as a gap, not built.
+
+- **Evidence:** `denied_count` at top 6 for an employee: 6 of 6 for "What are the standard office hours at Acme?",
+  4 of 6 for "Who founded Acme Advisory Group?". A narrower signal was also measured (redact when the asker's single
+  best match was denied): it still hid office hours, annual leave, expense claims and "Why was my performance review
+  downgraded?", and showed only "How do I get IT help?" and "Who founded Acme?" among 9 everyday questions.
+- **Implementation:** the question cell always shows "Question withheld"; `question_visible` is the one switch and
+  returns False, and the text is dropped before any template sees it.
+- **Probes restated (user-approved under invariant 11; no leak check removed, none made easier):** d001-d004's live
+  controls move from question markers to the other tenant's user emails, which are already absent strings and must
+  still leak under the tenant-scope mutation. d031-d032 become "the raw script tag never appears", the only half that
+  applies when no question text renders. d009, d028, d033 and d034 are unchanged and still hold (the HR row visible
+  with "Question withheld"; removing the switch shows the question).
+- **Gap recorded:** an audit-reviewer role able to read question text, with its own ACL rule and probes.
+
 ### Phase 6 dashboard: result (2026-11-06; awaiting user review)
 
 `tests/test_dashboard_isolation.py`: **42/42** (32 probes, each with its live control; 9 cross-tenant and tenant-
