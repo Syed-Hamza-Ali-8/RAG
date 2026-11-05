@@ -29,6 +29,32 @@ services:
       timeout: 3s
       retries: 10
 
+  app:
+    build: .
+    env_file: .env
+    environment:
+      # Inside the compose network, not the host's published ports; the weights cache is a volume.
+      POSTGRES_HOST: postgres
+      POSTGRES_HOST_PORT: "5432"
+      EMBEDDING_CACHE_DIR: /cache/fastembed
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${APP_HOST_PORT:-8000}:8000"
+    volumes:
+      - fastembed:/cache/fastembed
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/dashboard', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 6
+      # First start downloads the embedding weights and embeds the corpus before serving.
+      start_period: 600s
+
 volumes:
   pgdata:
   redisdata:
+  fastembed:

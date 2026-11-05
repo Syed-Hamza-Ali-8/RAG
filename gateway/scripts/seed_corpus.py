@@ -1,5 +1,10 @@
-"""Seed demo tenants, users and the corpus/ documents with per-folder ACLs (see gateway.ingest.seed)."""
+"""Seed demo tenants, users and the corpus/ documents with per-folder ACLs (see gateway.ingest.seed).
 
+    uv run python scripts/seed_corpus.py              # (re)ingest everything
+    uv run python scripts/seed_corpus.py --if-empty   # only when no document exists yet (container start)
+"""
+
+import argparse
 import asyncio
 import logging
 import statistics
@@ -12,8 +17,17 @@ from gateway.ingest.embedder import Embedder
 from gateway.ingest.seed import seed_corpus
 
 
-async def main() -> None:
+async def main(if_empty: bool) -> None:
     settings = get_settings()
+    if if_empty:
+        pool = await create_pool(settings.database_dsn)
+        try:
+            existing = await pool.fetchval("SELECT count(*) FROM documents")
+        finally:
+            await pool.close()
+        if existing:
+            print(f"corpus already seeded ({existing} documents); nothing to do")
+            return
     embedder = Embedder(
         settings.embedding_model_id,
         settings.embedding_dim,
@@ -48,4 +62,6 @@ async def main() -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.WARNING)
-    asyncio.run(main())
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--if-empty", action="store_true", help="seed only when no document exists")
+    asyncio.run(main(ap.parse_args().if_empty))
