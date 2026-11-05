@@ -1409,6 +1409,44 @@ predicate removed) ran in vector mode only, so the keyword path had never been s
   of 37 probes; it was live, but no test had shown it. It is now covered by the per-path test.
 - **Vector path:** live, as before (the existing mutation test, plus the per-path test).
 
+## Phase 6 dashboard: design and isolation probes (fixed 2026-11-06, before any dashboard code)
+
+**Surfaces.** `GET /dashboard` is a static shell (HTML, HTMX and Chart.js from CDN, no build step) holding no data.
+Every data endpoint is under `/v1/dashboard/` and requires the admin role, read from the database per request
+(`require_admin`, as the admin API): `summary` (JSON: query count, outcomes, cache hit rate, modelled cost saved,
+p50/p95 latency, routing distribution), `feed` (HTML fragment: recent queries), `audit` (HTML fragment: audit rows,
+role filter) and `eval` (JSON: score history from the committed baselines).
+
+**Design decisions (for user review; conservative where the spec is silent):**
+1. **Tenant admins only, own tenant only.** The tenant comes from the token; no endpoint accepts a tenant parameter.
+   There is no operator role, so the spec's "tenant filter" is fixed to the caller's tenant; the role filter
+   narrows within it. Tenant scoping is composed from one function in `gateway/security/acl.py` so it can be mutated.
+2. **No answer text and no chunk content, ever.** `query_log.answer_raw` may quote content the admin may not read
+   (an admin is not HR). Retrieved chunks are shown as counts; a document title is shown only for chunks the admin
+   may read under the same `acl_predicate` as retrieval, the rest counted as "restricted".
+3. **Question text is shown** (the audit log's purpose: what was asked, by whom, what reached the model).
+4. **Eval history is aggregates only** from `eval/baselines/phase-*.json`, never per-item questions or answers.
+5. **Auth:** the bearer token is kept in `sessionStorage` and attached to every HTMX and chart request; no cookies,
+   so no CSRF surface. The shell's sign-in uses the dev issuer (correction H) and says so.
+6. **Cost saved is modelled:** cache hits x the tenant's mean shadow cost per answered miss in the window, labelled
+   as modelled. Eval judge calls (`purpose = 'eval_judge'`) are excluded from every metric.
+
+**Probes:** `eval/adversarial_dashboard.jsonl` (30), over traffic in `eval/dashboard_traffic.jsonl` (5 questions
+across both tenants, each carrying a unique marker; HR's salary question is answered by a stub that quotes its
+sources, so `answer_raw` holds the restricted figure 650,000). Categories: cross-tenant (5), tenant parameter (4),
+non-admin 403 (12), unauthenticated 401 (5), restricted content (2), eval aggregates (1), stale admin (1).
+
+**Pass rules (invariant 18: each probe proves its path is live):**
+- Every probe: expected status; every `absent_string` absent from the response body; every `present_string` present.
+- Cross-tenant and tenant-parameter probes count only if their `live_control` holds: the other tenant's admin sees
+  the marker (the data exists and is visible to its owner), and the summary's all-tenant count exceeds the caller's.
+- `same_as` probes must return exactly what the plain endpoint returns.
+- Non-admin 403s count only if removing the admin check makes the same request not 403.
+- Restricted-content probes count only if `answer_raw` really holds 650,000 for the HR query, and if, with the ACL
+  predicate reduced to tenant scoping only, the withheld title "Salary Bands 2026" appears.
+- The eval probe counts only if the baseline file really contains the per-item question it must not show.
+- **Mutation:** with the dashboard's tenant scope replaced by TRUE, every cross-tenant probe must fail.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the

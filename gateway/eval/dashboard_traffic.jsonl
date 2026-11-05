@@ -1,0 +1,5 @@
+{"tenant": "acme", "as_user": "employee@acme.example", "question": "How many days of annual leave do full-time staff get? (ref ACMEQ7731)", "marker": "ACMEQ7731"}
+{"tenant": "acme", "as_user": "hr@acme.example", "question": "What is the minimum monthly salary for a Manager (C1) in Karachi? (ref ACMEQ8842)", "marker": "ACMEQ8842", "restricted_answer": "650,000"}
+{"tenant": "acme", "as_user": "intern@acme.example", "question": "Who do I ask about expense claims? (ref ACMEQ9953)", "marker": "ACMEQ9953"}
+{"tenant": "globex", "as_user": "employee@globex.example", "question": "How many days of paid annual leave do full-time Globex employees get? (ref GLOBQ4410)", "marker": "GLOBQ4410"}
+{"tenant": "globex", "as_user": "hr@globex.example", "question": "What does the Globex remote work policy allow? (ref GLOBQ5521)", "marker": "GLOBQ5521"}
