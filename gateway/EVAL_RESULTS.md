@@ -1431,10 +1431,12 @@ role filter) and `eval` (JSON: score history from the committed baselines).
 6. **Cost saved is modelled:** cache hits x the tenant's mean shadow cost per answered miss in the window, labelled
    as modelled. Eval judge calls (`purpose = 'eval_judge'`) are excluded from every metric.
 
-**Probes:** `eval/adversarial_dashboard.jsonl` (30), over traffic in `eval/dashboard_traffic.jsonl` (5 questions
+**Probes:** `eval/adversarial_dashboard.jsonl`, over traffic in `eval/dashboard_traffic.jsonl` (questions
 across both tenants, each carrying a unique marker; HR's salary question is answered by a stub that quotes its
 sources, so `answer_raw` holds the restricted figure 650,000). Categories: cross-tenant (5), tenant parameter (4),
-non-admin 403 (12), unauthenticated 401 (5), restricted content (2), eval aggregates (1), stale admin (1).
+non-admin 403 (12), unauthenticated 401 (5), restricted content (2), eval aggregates (1), stale admin (1),
+markup injection (2: a question carrying a script tag must render escaped in the feed and the audit view; added
+before any dashboard code). 32 probes, over 6 traffic questions.
 
 **Pass rules (invariant 18: each probe proves its path is live):**
 - Every probe: expected status; every `absent_string` absent from the response body; every `present_string` present.
