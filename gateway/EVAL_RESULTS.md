@@ -1259,6 +1259,109 @@ with `--rejudge q055 --rejudge q056 --compare-to eval/baselines/phase-4.json`; n
 uncommitted Phase 5 baseline written at the end of session 2 is replaced by the one this produces. A second
 failure on either item is reported as unjudged.
 
+## Golden set baseline — Phase 5
+
+Full run of all 100 golden-set items, 2026-11-05T18:45:49+00:00, by `uv run python eval/run_eval.py --baseline "Phase 5"`. Results: `eval/baselines/phase-5.json`.
+
+- Generator: `openai/gpt-oss-20b` (tier `small`), prompt `answer-v2`; judge: `openai/gpt-oss-120b` (tier `large`), prompt `judge-v2`
+- Retrieval: hybrid (vector + FTS, RRF k=60, top 20 per path), ACL-filtered in SQL as each item's seeded `as_user`; answers use top 6; metrics at top 10
+- Golden set hash `d58769e8532dd8e0`; corpus 251 chunks; commits `2e0fb1a`, `4dc3fd9`, `952745f`
+
+| Retrieval (answerable items) | n | recall@5 | recall@6 | recall@10 | all-hops@10 | MRR | nDCG@10 |
+|---|---|---|---|---|---|---|---|
+| all_answerable | 85 | 90.0% | 91.8% | 94.1% | 89.4% | 0.820 | 0.822 |
+| single_hop | 50 | 96.0% | 98.0% | 98.0% | 98.0% | 0.782 | 0.832 |
+| buried_fact | 20 | 100.0% | 100.0% | 100.0% | 100.0% | 0.756 | 0.817 |
+| multi_hop | 25 | 74.0% | 76.0% | 84.0% | 68.0% | 0.862 | 0.761 |
+| near_miss | 10 | 100.0% | 100.0% | 100.0% | 100.0% | 0.900 | 0.926 |
+
+| Generation | rate | count / n |
+|---|---|---|
+| Refused unanswerable (hallucination guard) | 93.3% | 14 / 15 |
+| Refused answerable (false refusals; truncations excluded) | 0.0% | 0 / 83 |
+| Truncated at the completion limit (neither answered nor refused) | 2.0% | 2 / 100 |
+| Faithful (judge, answered items) | 98.8% | 83 / 84 |
+| Relevant (judge, answered items) | 97.6% | 82 / 84 |
+| Citations supported (judge-v2, answered items) | 86.9% | 73 / 84 |
+| Correct (judge; refusals and truncations count as not correct) | 94.1% | 80 / 85 |
+| Near-miss pairs with both answers correct | 100.0% | 5 / 5 |
+
+Judge errors: 0. Hallucinated on unanswerable: ['q090']. Refused answerable: none. Truncated: ['q051', 'q052'].
+
+## Phase 5 headline finding: the first hallucination on an unanswerable question (q090)
+
+**User-worded, recorded 2026-11-05 from the final Phase 5 baseline (`eval/baselines/phase-5.json`); the one number
+that differs from the wording as first given is marked.**
+
+Phase 5's keyword path added 3 correct single-hop answers and eliminated all 4 false refusals. It also produced the
+project's first hallucination on an unanswerable question. Asked which law firm represents Globex, the system
+answered with a person named as legal counsel in a related agreement, and cited a real, on-topic, permitted chunk.
+q064 fails the same way: measured availability substituted for committed availability.
+
+The citation check cannot detect this class. It verifies that a cited chunk exists, is permitted, and supports the
+claim — and here all three hold. What fails is that the retrieved fact is adjacent to the question rather than the
+answer to it. Lexical retrieval surfaces chunks sharing the question's words, and word overlap does not distinguish
+'legal counsel' from 'law firm', or 'measured' from 'committed'.
+
+This is the cost of the Phase 5 gain, and it is not a bug to fix in this phase. It is a structural limit of lexical
+retrieval plus a citation-existence check, and it is now measured: 1 hallucination in 15 unanswerable questions, and
+citations_supported down from 0.925 to **0.869** (73 of 84 answered items; 0.878 before q055 and q056 were
+re-judged, when q055's verdict marked one of its citations unsupported).
+
+| item | question | Phase 4 | Phase 5 answer | cited |
+|---|---|---|---|---|
+| q090 (unanswerable) | Which law firm represents Globex in its dispute with Tessera? | refused | "Henrik Dahl, Legal Counsel." | legal-vendor-agreement-tessera-cloud #5 |
+| q064 (multi-hop) | Which provider hosts Marlowe Retail Group's files, and what monthly availability does it commit to? | refused | Tessera Cloud (correct), then monthly measured availability from the SLA monitoring log, presented as the commitment | marlowe engagement letter #4, tessera-cloud #12 |
+
+**Evidence note (what the top-6 context shows):**
+- **q064 fits the lexical mechanism exactly.** The SLA monitoring log (tessera-cloud #12) is not in Phase 4's top 6;
+  hybrid brings it in at rank 6, and the answer is built from it. The chunk holding the committed figure
+  (tessera-cloud #2) is in neither run's top 6.
+- **q090 is the same failure class with a different trigger.** The chunk it cites (tessera-cloud #5) was already in
+  Phase 4's top 6, at rank 3, and Phase 4 refused. Phase 5's top 6 is the same chunk at rank 5 inside a context of
+  six Tessera agreement chunks (Phase 4's held the company overview and five agreement chunks). Hybrid did not
+  surface the adjacent fact for q090; it changed what surrounded it, and with that context the generator answered
+  instead of refusing. One item cannot separate the context change from generator variance, so the mechanism for
+  q090 is stated as observed, not as proven.
+
+**The open question, stated rather than solved.** Whether hybrid's net effect is positive depends on how a user
+weighs 3 more correct answers (and 4 fewer false refusals) against 1 confident wrong one. **For an internal document
+assistant in a law firm, that trade is probably bad.** A refusal sends a lawyer to the source; a confident, cited
+answer naming the wrong party is the failure a firm buys this product to avoid, and the citation makes it more
+convincing, not less. Phase 5 ships what was measured: `RETRIEVAL_MODE=hybrid`, with this cost on the record. Nothing
+has been changed to address it in this phase.
+
+## Phase 5 gate: results (2026-11-05; isolation suites pending, then user approval)
+
+Gate run: `eval/baselines/phase-5.json` (run `20261103T200805Z_full`, three sessions at `2e0fb1a`, `4dc3fd9`,
+`952745f`; the third only re-judged q055 and q056). Judged against Phase 4; Phase 2 reported beside it.
+
+| | Phase 2 | Phase 4 | **Phase 5** | pre-registered |
+|---|---|---|---|---|
+| multi-hop correct | 18/25 | 18/25 | **21/25** | 18 → +1 to +3: **held, top of range** |
+| single-hop correct | 45/50 | 47/50 | **49/50** | no regression beyond ±3: **held (+2)** |
+| buried-fact correct | — | 19/20 | 20/20 | — |
+| unanswerable refused | 15/15 | 15/15 | **14/15** (q090) | — |
+| false refusals, answerable | — | 4 | 0 | — |
+| truncated generations | — | 1 | 2 (q051, q052) | — |
+| faithful (answered) | — | 0.988 | 0.988 | — |
+| citations supported (answered) | — | 0.925 | **0.869** | — |
+
+- **Multi-hop, item by item (Phase 4 → 5):** q054 truncated → correct, q066 refused → correct, q069 wrong → correct;
+  q051 wrong → truncated, q052 refused → truncated, q064 refused → wrong (above). q055 and q056 correct in both.
+- **Single-hop:** q029, q043, q106 → correct; q005 correct → wrong.
+- **Judging:** three items (q030, q055, q056) re-judged once at a 4,000-token limit after the judge's reasoning ran
+  past 1,500 tokens (deviations recorded above before each re-judge); all three succeeded; 0 judge errors remain.
+
+| Spec gate item | Evidence | Status |
+|---|---|---|
+| Multi-hop accuracy improves over Phase 2; report both | 18/25 (Phase 2) → 21/25; against Phase 4 also 18 → 21 | **pass** |
+| Single-hop does not regress | 47/50 (Phase 4) → 49/50; 45/50 in Phase 2 | **pass** |
+| Graph traversal respects ACLs (adversarial suite) | isolation suites incl. both graph modes, full, quiet machine | **pending** |
+| Extraction cost and ingestion time per document | `eval/phase5/m2_extraction_report.md` (section above) | **pass** |
+
+The gate's quality items pass, and the Phase 5 headline finding above is the cost that comes with them.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
