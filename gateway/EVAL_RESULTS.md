@@ -1290,18 +1290,28 @@ Judge errors: 0. Hallucinated on unanswerable: ['q090']. Refused answerable: non
 
 ## Phase 5 headline finding: the first hallucination on an unanswerable question (q090)
 
-**User-worded, recorded 2026-11-05 from the final Phase 5 baseline (`eval/baselines/phase-5.json`); the one number
-that differs from the wording as first given is marked.**
+**User-worded, recorded 2026-11-05 from the final Phase 5 baseline (`eval/baselines/phase-5.json`).**
 
 Phase 5's keyword path added 3 correct single-hop answers and eliminated all 4 false refusals. It also produced the
 project's first hallucination on an unanswerable question. Asked which law firm represents Globex, the system
 answered with a person named as legal counsel in a related agreement, and cited a real, on-topic, permitted chunk.
 q064 fails the same way: measured availability substituted for committed availability.
 
-The citation check cannot detect this class. It verifies that a cited chunk exists, is permitted, and supports the
-claim — and here all three hold. What fails is that the retrieved fact is adjacent to the question rather than the
-answer to it. Lexical retrieval surfaces chunks sharing the question's words, and word overlap does not distinguish
-'legal counsel' from 'law firm', or 'measured' from 'committed'.
+Two regressions, with different evidence behind them.
+
+q064 is a clear lexical-retrieval failure: the SLA monitoring log chunk was not in Phase 4's top 6, hybrid's keyword
+path brought it in, and the model answered with measured availability where the question asked for committed
+availability. Word overlap does not distinguish 'measured' from 'committed'.
+
+q090 is not. The chunk it cited was already in Phase 4's top 6 at rank 3, and Phase 4 refused. What changed is the
+surrounding context: hybrid filled the six sources with Tessera agreement chunks, and with that context the model
+answered instead of refusing. With a single item this cannot be separated from ordinary model variance, and the
+write-up does not claim it is.
+
+What both share is what the citation check cannot catch. It verifies that a cited chunk exists, is permitted, and
+supports the claim — and in both cases all three hold. The fact retrieved is adjacent to the question rather than the
+answer to it: legal counsel instead of a law firm, measured instead of committed. That class of error is invisible to
+every guardrail in the system.
 
 This is the cost of the Phase 5 gain, and it is not a bug to fix in this phase. It is a structural limit of lexical
 retrieval plus a citation-existence check, and it is now measured: 1 hallucination in 15 unanswerable questions, and
@@ -1312,17 +1322,6 @@ re-judged, when q055's verdict marked one of its citations unsupported).
 |---|---|---|---|---|
 | q090 (unanswerable) | Which law firm represents Globex in its dispute with Tessera? | refused | "Henrik Dahl, Legal Counsel." | legal-vendor-agreement-tessera-cloud #5 |
 | q064 (multi-hop) | Which provider hosts Marlowe Retail Group's files, and what monthly availability does it commit to? | refused | Tessera Cloud (correct), then monthly measured availability from the SLA monitoring log, presented as the commitment | marlowe engagement letter #4, tessera-cloud #12 |
-
-**Evidence note (what the top-6 context shows):**
-- **q064 fits the lexical mechanism exactly.** The SLA monitoring log (tessera-cloud #12) is not in Phase 4's top 6;
-  hybrid brings it in at rank 6, and the answer is built from it. The chunk holding the committed figure
-  (tessera-cloud #2) is in neither run's top 6.
-- **q090 is the same failure class with a different trigger.** The chunk it cites (tessera-cloud #5) was already in
-  Phase 4's top 6, at rank 3, and Phase 4 refused. Phase 5's top 6 is the same chunk at rank 5 inside a context of
-  six Tessera agreement chunks (Phase 4's held the company overview and five agreement chunks). Hybrid did not
-  surface the adjacent fact for q090; it changed what surrounded it, and with that context the generator answered
-  instead of refusing. One item cannot separate the context change from generator variance, so the mechanism for
-  q090 is stated as observed, not as proven.
 
 **The open question, stated rather than solved.** Whether hybrid's net effect is positive depends on how a user
 weighs 3 more correct answers (and 4 fewer false refusals) against 1 confident wrong one. **For an internal document
