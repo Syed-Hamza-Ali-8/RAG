@@ -1465,6 +1465,14 @@ retrieved chunk that no longer exists cannot be checked, so it also redacts.
   them; nothing is removed from what they check.
 - Questions from employee-level users stay visible: an admin (employee, admin; clearance 3) may read every chunk
   an employee (clearance 1) may read, so the cross-tenant probes' live controls still see their markers.
+- **Rule tightened (user, option A, 2026-11-06, before the code change):** the full suite found the hole in the
+  rule as first given. An employee, an engineer or a revoked HR user asking the salary question is *denied* the
+  salary chunks (`denied_count` 6-8) and retrieves only public ones, which the admin may read, so the question
+  showed, carrying the very phrase the rule exists to hide. The rule looks at what a query retrieved; a question's
+  sensitivity is what it was aimed at, and `denied_count` is the only record of that. **A question is now also
+  redacted when the ACL removed any of the asker's candidates (`denied_count > 0`).** Measured on the dev database's
+  acme audit log: the first rule redacts 843 of 971 rows, the tightened rule 944 (101 more). It over-redacts where
+  the admin could have read the denied chunks (their ids are not recorded). The probes are unchanged.
 
 ### Phase 6 dashboard: result (2026-11-06; awaiting user review)
 
