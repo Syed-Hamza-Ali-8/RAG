@@ -1449,6 +1449,23 @@ before any dashboard code). 32 probes, over 6 traffic questions.
 - The eval probe counts only if the baseline file really contains the per-item question it must not show.
 - **Mutation:** with the dashboard's tenant scope replaced by TRUE, every cross-tenant probe must fail.
 
+### Phase 6 dashboard: result (2026-11-06; awaiting user review)
+
+`tests/test_dashboard_isolation.py`: **42/42** (32 probes, each with its live control; 9 cross-tenant and tenant-
+parameter probes failing as required under the tenant-scope mutation; probe coverage). The four isolation suites
+together (ACL, admin, cache, dashboard), nothing else running: **541/541**, 2 min 37 s, peak 808 MB. Full suite 790,
+smoke pass.
+
+- **One probe failed on the first run, and the code was changed, not the probe:** d026 found `@acme.example` in the
+  unauthenticated shell, from the sign-in form's prefilled demo identity. The prefill was removed.
+- **Live check against the dev database** (real logs from Phases 1-5): each admin's feed and audit view showed no
+  other tenant's users, no `650,000` and no "Salary Bands" title; in acme's audit view 184 of 201 rows withhold at
+  least one chunk the admin may not read (every withheld id exists: these are ACL withholdings, not deleted chunks).
+  An employee gets 403, no token 401.
+- **A misleading number found and labelled:** only 235 of acme's 1,131 logged queries carry a shadow cost (none
+  before Phase 4), so the modelled saving (USD 0.093, hits x mean answered-miss cost) exceeded the recorded shadow
+  total (USD 0.037). The summary now returns `costed_queries`, and the page states how many queries carry a cost.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the

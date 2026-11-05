@@ -1,0 +1,19 @@
+{# Live query feed. Autoescaped: question text is user-typed. No answer text is ever passed to this template. #}
+{% if not rows %}<p class="note">No queries yet in this tenant.</p>{% else %}
+<table>
+  <thead><tr><th>Time (UTC)</th><th>User</th><th>Question</th><th>Outcome</th><th>Tier</th><th>Latency</th><th>Chunks</th><th>Cited</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="num">{{ r.ts.strftime("%m-%d %H:%M:%S") }}</td>
+      <td>{{ r.email or "(deleted user)" }}</td>
+      <td>{{ r.query_text }}</td>
+      <td class="{{ 'refused' if r.refused else '' }}">{{ r.outcome or ("refused" if r.refused else "answered") }}{% if r.served_from_cache %} <span class="pill">cache</span>{% endif %}</td>
+      <td>{{ r.route_tier or "–" }}</td>
+      <td class="num">{{ r.total_ms ~ " ms" if r.total_ms is not none else "–" }}</td>
+      <td class="num">{{ r.retrieved_ids | length }}{% if r.denied_count %} <span class="pill">{{ r.denied_count }} denied</span>{% endif %}</td>
+      <td class="num">{{ r.citations_valid if r.citations_valid is not none else "–" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>{% endif %}

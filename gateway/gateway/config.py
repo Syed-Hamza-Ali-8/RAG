@@ -97,6 +97,8 @@ class Settings(BaseSettings):
     # LLM-as-judge (eval only). An explicit tier choice, like llm_tier; never switched at runtime.
     eval_judge_tier: Tier = "large"
     eval_judge_max_completion_tokens: int = 1500
+    # Phase 6 dashboard: committed eval baselines (aggregates only are served).
+    eval_baselines_dir: Path = Path(__file__).resolve().parent.parent / "eval" / "baselines"
     # Provider's per-model daily token cap (Groq free tier: 200,000/day, rolling 24 h). Used by the
     # eval pre-flight check; verify the current value in the provider console.
     llm_daily_token_limit: int = 200000

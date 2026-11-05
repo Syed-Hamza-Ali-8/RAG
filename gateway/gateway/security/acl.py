@@ -38,3 +38,11 @@ def acl_predicate(alias: str, first_param: int) -> str:
         f" AND (cardinality({alias}.allowed_roles) = 0 OR {alias}.allowed_roles && ${roles}::text[])"
         f" AND {alias}.min_clearance <= ${clearance})"
     )
+
+
+def tenant_predicate(alias: str, param: int) -> str:
+    """SQL boolean scoping table `alias` (any table with a tenant_id) to the tenant bound at $param. The one
+    place log-table tenant scoping is written (Phase 6 dashboard), so the isolation suite can mutate it."""
+    if not _ALIAS.match(alias) or not isinstance(param, int) or param < 1:
+        raise ValueError(f"invalid alias or parameter position: {alias!r}, {param!r}")
+    return f"({alias}.tenant_id = ${param})"

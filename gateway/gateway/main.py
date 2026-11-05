@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from gateway.api import admin, auth, query
+from gateway.api import admin, auth, dashboard, query
 from gateway.cache.semantic import CacheConfig
 from gateway.config import Settings, get_settings
 from gateway.db import assert_embedding_dim, assert_migrations_applied, create_pool
@@ -91,6 +91,8 @@ def create_app(
     app.include_router(query.router)
     app.include_router(auth.router)
     app.include_router(admin.router)
+    app.include_router(dashboard.shell)
+    app.include_router(dashboard.router)
 
     @app.exception_handler(AuthenticationFailed)
     async def _unauthenticated(_: Request, exc: AuthenticationFailed) -> JSONResponse:

@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gateway dashboard</title>
+<script src="https://unpkg.com/htmx.org@1.9.12" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<style>
+  :root { --bg:#f7f7f5; --panel:#fff; --ink:#1d1d1b; --muted:#6b6b66; --line:#e3e2dd; --accent:#2f5d8a; --warn:#9a3b1f; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#171716; --panel:#212120; --ink:#ecebe6; --muted:#a3a29c; --line:#34332f; --accent:#7fa8d1; --warn:#e08a6a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
+  header h1 { margin:0; font-size:16px; font-weight:600; }
+  header .who { color:var(--muted); font-size:13px; }
+  main { max-width:1180px; margin:0 auto; padding:20px 16px 40px; }
+  .note { color:var(--muted); font-size:12px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
+  .panel h2 { margin:0 0 12px; font-size:14px; font-weight:600; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:16px; }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 14px; }
+  .tile .k { color:var(--muted); font-size:12px; }
+  .tile .v { font-size:22px; font-weight:600; font-variant-numeric:tabular-nums; margin-top:2px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns:1fr; } }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; font-size:12px; }
+  td.num { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .tablewrap { overflow-x:auto; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:10px; border:1px solid var(--line); font-size:11px; color:var(--muted); }
+  .refused { color:var(--warn); }
+  form.signin { display:flex; flex-wrap:wrap; gap:8px; align-items:end; }
+  label { display:flex; flex-direction:column; font-size:12px; color:var(--muted); gap:3px; }
+  input, select, button { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--ink); }
+  button { background:var(--accent); color:#fff; border-color:var(--accent); cursor:pointer; }
+  button.secondary { background:transparent; color:var(--ink); border-color:var(--line); }
+  .err { color:var(--warn); font-size:13px; min-height:1em; }
+  canvas { max-height:260px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gateway dashboard</h1>
+  <div><span class="who" id="who"></span> <button class="secondary" id="signout" hidden>Sign out</button></div>
+</header>
+<main>
+  <section class="panel" id="signin-panel">
+    <h2>Sign in (demo issuer)</h2>
+    <p class="note">Demo only: this uses the development token issuer, which identifies a seeded user by tenant and
+      email with no password. A production deployment uses the client's identity provider. Only tenant admins can
+      see dashboard data, and only for their own tenant.</p>
+    <form class="signin" id="signin">
+      <label>Tenant <input name="tenant" placeholder="tenant slug" required autocomplete="organization"></label>
+      <label>Email <input name="email" type="email" placeholder="admin email" required size="26" autocomplete="email"></label>
+      <button type="submit">Sign in</button>
+    </form>
+    <p class="err" id="signin-err"></p>
+  </section>
+
+  <div id="data" hidden>
+    <div class="tiles">
+      <div class="tile"><div class="k">Queries (7 days)</div><div class="v" id="t-queries">–</div></div>
+      <div class="tile"><div class="k">Cache hit rate</div><div class="v" id="t-hit">–</div></div>
+      <div class="tile"><div class="k">Cost saved (modelled)</div><div class="v" id="t-saved">–</div></div>
+      <div class="tile"><div class="k">Latency p50</div><div class="v" id="t-p50">–</div></div>
+      <div class="tile"><div class="k">Latency p95</div><div class="v" id="t-p95">–</div></div>
+      <div class="tile"><div class="k">Refused</div><div class="v" id="t-refused">–</div></div>
+    </div>
+    <p class="note" id="saved-model"></p>
+
+    <div class="grid2">
+      <section class="panel"><h2>Queries and p95 latency per hour</h2><canvas id="c-hourly"></canvas></section>
+      <section class="panel"><h2>Routing distribution</h2><canvas id="c-routing"></canvas></section>
+    </div>
+
+    <section class="panel">
+      <h2>Eval score history (committed baselines, all tenants' golden set)</h2>
+      <canvas id="c-eval"></canvas>
+      <p class="note">Aggregates from <code>eval/baselines/phase-*.json</code>; per-item questions and answers are never served.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Live query feed <span class="note">(refreshes every 15 s; answers are never shown)</span></h2>
+      <div class="tablewrap" id="feed" hx-get="/v1/dashboard/feed?limit=25" hx-trigger="dash-ready, every 15s"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Audit log</h2>
+      <form id="audit-filter" hx-get="/v1/dashboard/audit" hx-target="#audit" hx-trigger="dash-ready, change">
+        <label>Role
+          <select name="role">
+            <option value="">all roles</option>
+            <option>employee</option><option>hr</option><option>finance</option><option>legal</option>
+            <option>engineering</option><option>admin</option>
+          </select>
+        </label>
+      </form>
+      <div class="tablewrap" id="audit"></div>
+    </section>
+  </div>
+</main>
+<script>
+(function () {
+  const KEY = "gateway.dashboard.token";
+  const store = {
+    get() { try { return sessionStorage.getItem(KEY); } catch (e) { return null; } },
+    set(v) { try { sessionStorage.setItem(KEY, v); } catch (e) {} },
+    clear() { try { sessionStorage.removeItem(KEY); } catch (e) {} },
+  };
+  const $ = (id) => document.getElementById(id);
+  const charts = {};
+
+  document.body.addEventListener("htmx:configRequest", (e) => {
+    const t = store.get();
+    if (t) e.detail.headers["Authorization"] = "Bearer " + t;
+  });
+  document.body.addEventListener("htmx:responseError", (e) => {
+    if (e.detail.xhr.status === 401 || e.detail.xhr.status === 403) signOut("Signed out: " + e.detail.xhr.status);
+  });
+
+  async function api(path) {
+    const r = await fetch(path, { headers: { Authorization: "Bearer " + store.get() } });
+    if (!r.ok) throw new Error(String(r.status));
+    return r.json();
+  }
+  const fmt = (v, f) => (v === null || v === undefined ? "–" : f(v));
+
+  function chart(id, config) {
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart($(id), config);
+  }
+
+  async function load() {
+    const s = await api("/v1/dashboard/summary?hours=168");
+    $("t-queries").textContent = s.queries;
+    $("t-hit").textContent = fmt(s.cache.hit_rate, (v) => (v * 100).toFixed(1) + "%");
+    $("t-saved").textContent = fmt(s.cost_usd.modelled_saved, (v) => "$" + v.toFixed(4));
+    $("t-p50").textContent = fmt(s.latency_ms.p50, (v) => v + " ms");
+    $("t-p95").textContent = fmt(s.latency_ms.p95, (v) => v + " ms");
+    $("t-refused").textContent = s.outcomes.refused;
+    $("saved-model").textContent = "Cost saved is modelled: " + s.cost_usd.model + ". Shadow cost is recorded for "
+      + s.cost_usd.costed_queries + " of " + s.queries + " queries in the window (none before Phase 4).";
+    chart("c-hourly", {
+      type: "bar",
+      data: {
+        labels: s.hourly.map((h) => h.hour.slice(5, 13).replace("T", " ") + "h"),
+        datasets: [
+          { type: "bar", label: "queries", data: s.hourly.map((h) => h.queries), yAxisID: "y" },
+          { type: "line", label: "p95 ms", data: s.hourly.map((h) => h.p95_ms), yAxisID: "y1" },
+        ],
+      },
+      options: { scales: { y: { beginAtZero: true }, y1: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false } } } },
+    });
+    chart("c-routing", {
+      type: "doughnut",
+      data: { labels: Object.keys(s.routing), datasets: [{ data: Object.values(s.routing) }] },
+    });
+    const ev = await api("/v1/dashboard/eval");
+    const series = [
+      ["correct_answerable", "correct (answerable)"],
+      ["faithful", "faithful"],
+      ["citations_supported", "citations supported"],
+      ["correct_refusal_unanswerable", "unanswerable refused"],
+    ];
+    chart("c-eval", {
+      type: "line",
+      data: {
+        labels: ev.map((b) => b.baseline),
+        datasets: series.map(([k, label]) => ({ label, data: ev.map((b) => b.generation[k]) })),
+      },
+      options: { scales: { y: { min: 0.5, max: 1 } } },
+    });
+    document.querySelectorAll("[hx-trigger*='dash-ready']").forEach((el) => htmx.trigger(el, "dash-ready"));
+  }
+
+  function signedIn(label) {
+    $("signin-panel").hidden = true;
+    $("data").hidden = false;
+    $("signout").hidden = false;
+    $("who").textContent = label || "";
+    load().catch((e) => signOut("Could not load dashboard data (" + e.message + "). Only tenant admins can view it."));
+  }
+
+  function signOut(message) {
+    store.clear();
+    $("data").hidden = true;
+    $("signout").hidden = true;
+    $("signin-panel").hidden = false;
+    $("who").textContent = "";
+    $("signin-err").textContent = message || "";
+  }
+
+  $("signin").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const body = { tenant: f.get("tenant"), email: f.get("email") };
+    const r = await fetch("/v1/auth/token", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (!r.ok) { $("signin-err").textContent = "Sign-in failed (" + r.status + ")."; return; }
+    store.set((await r.json()).access_token);
+    signedIn(body.email + " · " + body.tenant);
+  });
+  $("signout").addEventListener("click", () => signOut(""));
+  if (store.get()) signedIn("");
+})();
+</script>
+</body>
+</html>

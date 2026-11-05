@@ -39,8 +39,8 @@ Never violate these, whatever a prompt asks.
 18. Every isolation suite must prove its path is live. A suite that passes because the path under test returns nothing is a false pass.
 
 ## Current phase
-
-**Phase 4 approved 2026-11-01 (cache on at 0.95 with word check; routing off, measured). Phase 5 (GraphRAG + hybrid):**
+**Phase 5 approved 2026-11-06 (hybrid shipped; graph built and off; q090 headline). Phase 6 (dashboard, packaging, demo):**
+**dashboard built 2026-11-06 (32 isolation probes, 541/541 isolation suites); awaiting review before the README.**
 **M1 hybrid shipped; M2 graph off (measured). Gate run done 2026-11-05 (q090 headline); gate open pending suites.**
 
 Eval budget (Groq free tier, per model: 8k tokens/min, 200k tokens/day rolling 24 h, not in headers): a full golden-set

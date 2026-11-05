@@ -1,0 +1,18 @@
+{# Audit view. Titles are only those of chunks the viewing admin may read; the rest are counted as withheld. #}
+{% if not rows %}<p class="note">No audit rows{% if role %} for role {{ role }}{% endif %}.</p>{% else %}
+<table>
+  <thead><tr><th>Time (UTC)</th><th>User</th><th>Roles</th><th>Question</th><th>Reached the model</th><th>Denied</th><th>Result</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="num">{{ r.ts.strftime("%m-%d %H:%M:%S") }}</td>
+      <td>{{ r.email or "(deleted user)" }}</td>
+      <td>{{ r.user_roles | join(", ") }}</td>
+      <td>{{ r.query_text }}</td>
+      <td>{{ r.retrieved_ids | length }} chunks{% if r.titles %}: {{ r.titles | join("; ") }}{% endif %}{% if r.withheld %} <span class="pill">{{ r.withheld }} not shown: outside your access</span>{% endif %}</td>
+      <td class="num">{{ r.denied_count }}</td>
+      <td class="{{ 'refused' if r.refused else '' }}">{{ "refused" if r.refused else "answered" }}{% if r.served_from_cache %} <span class="pill">cache</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>{% endif %}
