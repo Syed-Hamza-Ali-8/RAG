@@ -34,3 +34,14 @@ async def readable_titles(
     titles = [r["title"] for r in await conn.fetch(_titles_sql(), chunk_ids, *acl_filter.params())]
     readable: int = await conn.fetchval(_readable_count_sql(), chunk_ids, *acl_filter.params())
     return titles, readable
+
+
+def _viewer_readable_sql() -> str:
+    # $1-$3 the viewer's ACL. How many chunks in the tenant the viewer may read (the dashboard explains its
+    # "outside your access" counts with it); never which ones.
+    return "SELECT count(*) FROM chunks c WHERE " + acl.acl_predicate("c", 1)  # noqa: S608
+
+
+async def viewer_readable_count(conn: asyncpg.Connection, acl_filter: acl.AclFilter) -> int:
+    n: int = await conn.fetchval(_viewer_readable_sql(), *acl_filter.params())
+    return n

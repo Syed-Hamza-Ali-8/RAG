@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from gateway.deps import AuthContext, require_admin
-from gateway.retrieval.titles import readable_titles
+from gateway.retrieval.titles import readable_titles, viewer_readable_count
 from gateway.security import acl
 
 TEMPLATES = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
@@ -109,6 +109,7 @@ async def summary(
         s = await conn.fetchrow(_summary_sql(), admin.tenant_id, hours)
         routing = await conn.fetch(_routing_sql(), admin.tenant_id, hours)
         hourly = await conn.fetch(_hourly_sql(), admin.tenant_id, hours)
+        readable = await viewer_readable_count(conn, admin.acl())
     consulted = s["cache_consulted"]
     miss_cost = float(s["miss_cost"]) if s["miss_cost"] is not None else None
     return {
@@ -131,6 +132,7 @@ async def summary(
             "p95": round(s["p95_ms"]) if s["p95_ms"] is not None else None,
         },
         "routing": {r["tier"]: r["n"] for r in routing},
+        "viewer": {"roles": list(admin.roles), "clearance": admin.clearance, "readable_chunks": readable},
         "hourly": [
             {"hour": r["hour"].isoformat(), "queries": r["n"], "p95_ms": round(r["p95_ms"] or 0)}
             for r in hourly

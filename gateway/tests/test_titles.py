@@ -54,3 +54,11 @@ async def test_restricted_titles_are_withheld_and_counted(pool: asyncpg.Pool) ->
 def test_both_title_queries_carry_the_acl_predicate() -> None:
     pred = acl.acl_predicate("c", 2)
     assert pred in titles._titles_sql() and pred in titles._readable_count_sql()
+    assert acl.acl_predicate("c", 1) in titles._viewer_readable_sql()
+
+
+async def test_viewer_readable_count_follows_the_acl(pool: asyncpg.Pool) -> None:
+    tid, _, _ = await _seed(pool)
+    async with pool.acquire() as conn:
+        assert await titles.viewer_readable_count(conn, AclFilter(tid, ("employee", "admin"), 3)) == 1
+        assert await titles.viewer_readable_count(conn, AclFilter(tid, ("hr",), 3)) == 2

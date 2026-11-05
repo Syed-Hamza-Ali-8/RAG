@@ -70,7 +70,9 @@ async def test_summary_shape_and_window_bounds(client: httpx.AsyncClient) -> Non
         "latency_ms",
         "routing",
         "hourly",
+        "viewer",
     }
+    assert body["viewer"]["roles"] == ["employee", "admin"] and body["viewer"]["readable_chunks"] >= 1
     assert body["window_hours"] == 24 and body["cost_usd"]["model"].startswith("cache hits x mean")
     assert body["cost_usd"]["costed_queries"] <= body["queries"]
     for bad in (0, 721, "x"):
