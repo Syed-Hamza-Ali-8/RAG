@@ -1611,6 +1611,12 @@ read.
 project dependency, and an isolation test may not skip). What the browser does with the response is guaranteed by
 construction (text-only DOM writes, checked structurally) and by a browser check, not by an executed test.
 
+**Change from the browser review (user, 2026-11-06, before the code change):** each source is prefixed with its
+label (`[S1]`), so a reader can match the answer's citations to the list; c007's allowlist of citation fields gains
+`label`, which is the source's position in that answer's list and carries no permission information. The heading
+path is shown only where it adds something: 195 of 251 chunks have a heading path equal to the document title and 54
+begin with the title followed by a section, so the page drops the title from the path and shows the rest, if any.
+
 **Result (2026-11-06):** `tests/test_chat_isolation.py` **13/13** (11 probes, every live control holding,
 P1 and its mutation on c001 and c002). The five isolation suites together (ACL, admin, cache, dashboard, chat):
 **555/555**, 3 min 05 s, peak 808 MB, with nothing else from this project running except the idle fresh-clone stack.
