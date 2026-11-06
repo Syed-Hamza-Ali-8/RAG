@@ -1554,6 +1554,38 @@ keys, two model IDs, `JWT_SECRET`); the others are the Postgres password and the
 **Nothing broke in the real check**, because the rehearsal had already found the breaks. The README's setup section
 claims exactly this: four commands plus five `.env` values, with the measured times.
 
+## Phase 6 scope added beyond the spec: `/chat` (fixed 2026-11-06, before any chat code)
+
+**Reason (user):** the dashboard serves admins watching the system; there was no interface for the person asking
+questions, which makes the product impossible to demo to a non-technical viewer. The spec's Phase 6 lists a
+dashboard, packaging and a demo, not a query page; this is added scope, recorded as such.
+
+**Design.** `GET /chat` is a static page (no data, no token needed to load it): the existing demo sign-in, a question
+box, and each answer rendered with its citations as document title and heading path. It calls the existing
+`POST /v1/query` with exactly `{"question": ...}`; no backend change beyond the route serving the page. `/v1/query`
+returns JSON, so the page renders it with `textContent`, as the dashboard's tiles do (HTMX swaps server-rendered HTML,
+and a server-rendered fragment would be a backend change). A refusal is shown exactly as the API returns it, in the
+same element and style as an answer, with no wording of its own: P4 indistinguishability applies to the UI.
+
+**Probes** (`eval/adversarial_chat.jsonl`, 11), each with a live control (invariant 18):
+- **Role permits** (2): through the request the page sends, an employee and another tenant's HR user asking about
+  the HR-only leave policy get none of its content; live: HR asking the same gets "22 working days".
+- **Refusal indistinguishable** (1): the employee's refusal equals a genuinely unanswerable question's (answer,
+  refused, citations); live: HR is answered.
+- **No chunk text** (2): with a model that answers without quoting, the response carries no sentence of the cited
+  chunk (live: the chunk holds it); the `Citation` model has no content field.
+- **Text-only rendering** (2, structural): the page's script uses no `innerHTML`, `outerHTML`,
+  `insertAdjacentHTML`, `document.write`, `eval` or `new Function`, and reads only `answer`, `refused`, `citations`,
+  `document_title`, `heading_path`; live: each checker flags a mutated page.
+- **No refusal wording** (1, structural): the page contains none of "permission", "not allowed", "access denied",
+  "restricted", "forbidden", "don't have access"...; live: the checker flags a mutant.
+- **Endpoints** (1, structural): the page fetches only `/v1/auth/token` and `/v1/query`; live: a mutant is flagged.
+- **Shell holds no data** (1); **markup in a question** (1): the API answers it as JSON, never HTML.
+
+**Not covered by the suite, stated in advance:** the page's JavaScript is not executed in tests (Node is not a
+project dependency, and an isolation test may not skip). What the browser does with the response is guaranteed by
+construction (text-only DOM writes, checked structurally) and by a browser check, not by an executed test.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the
