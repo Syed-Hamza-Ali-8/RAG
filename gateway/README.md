@@ -27,6 +27,8 @@ that tested them.
 - **Hybrid retrieval** (vector + full-text, fused with Reciprocal Rank Fusion).
 - **Built, measured, and shipped off:** complexity routing to a larger model, and a GraphRAG layer. Both lost on
   this corpus; the numbers are below.
+- **Chat page** (`/chat`) for the person asking: sign in, ask, read the answer with its sources (document and
+  section). A refusal is shown exactly as the API returns it.
 - **Admin dashboard** (HTMX + Chart.js, no build step), scoped to the admin's own tenant.
 
 ## Architecture
@@ -68,7 +70,7 @@ answerable, 15 unanswerable), each asked as a real seeded user with that user's 
 | Faithful answers | 83 / 84 | 79 / 80 | Golden set baseline — Phase 5 |
 | **Unanswerable questions refused** | **14 / 15** (one hallucination, q090) | 15 / 15 | Phase 5 headline finding |
 | **Citations supported** | **0.869** (73 / 84) | 0.925 | Phase 5 headline finding |
-| Isolation tests (ACL, admin, cache, dashboard), together | **543 / 543** | — | Phase 6 dashboard: result |
+| Isolation tests (ACL, admin, cache, dashboard, chat), together | **555 / 555** | — | Phase 6 scope added beyond the spec: `/chat` |
 | Each retrieval path live, and leaking when its own predicate is removed (37 probes) | vector 37 / 37, keyword 36 / 37 and 37 / 37, graph 37 / 37 | — | Isolation suites: a false pass found and closed |
 | Restricted chunks that reached the model before ACLs (Phase 2) vs after (Phase 3) | 187 → **0** | — | A correct answer that should never have been possible |
 | Cache, repeated traffic (250 requests) | **57.2 %** hit, **54.9 %** shadow cost saved, as predicted | — | Phase 4 gate: results |
@@ -138,8 +140,9 @@ ask hr@acme.example        # 22 working days, cited from the Leave Policy and th
 ask employee@acme.example  # refused: the leave policy is restricted to HR, so it never reaches the model
 ```
 
-The dashboard is at `http://localhost:8000/dashboard`; sign in as `admin@acme.example` (tenant `acme`) or
-`admin@globex.example` (tenant `globex`). Stop with `docker compose down`; `docker compose down -v` also deletes the
+The chat page is at `http://localhost:8000/chat` (sign in as any seeded user, for example `hr@acme.example` or
+`employee@acme.example`, tenant `acme`); the dashboard is at `http://localhost:8000/dashboard` (sign in as
+`admin@acme.example` or `admin@globex.example`). Stop with `docker compose down`; `docker compose down -v` also deletes the
 database and the downloaded weights.
 
 **Development** (tests, evals) runs the app on the host instead: `docker compose up -d --wait postgres redis`, then
@@ -169,6 +172,6 @@ full run needs more than one day of the free tier's token budget and resumes wit
 | `migrations/` | plain SQL migrations, applied in order by `scripts/migrate.py` |
 | `corpus/` | the synthetic documents and the seeded tenants and users |
 | `eval/` | golden set, adversarial probes, the harness (`run_eval.py`) and committed baselines |
-| `tests/` | unit tests and the four isolation suites |
+| `tests/` | unit tests and the five isolation suites |
 | `EVAL_RESULTS.md` | every measurement, pre-registration and deviation, in order |
 | `GATEWAY_RAG_BUILD_SPEC.md` | the build spec; `CLAUDE.md` records where the build corrected it |

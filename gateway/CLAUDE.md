@@ -41,7 +41,7 @@ Never violate these, whatever a prompt asks.
 ## Current phase
 
 **Phase 5 approved 2026-11-06 (hybrid shipped; graph built and off; q090 headline). Phase 6 (dashboard, packaging, demo):**
-**dashboard + README done; fresh clone passed 2026-11-06 (4 commands, ~7 min cold). Demo video next.**
+**dashboard, /chat (added scope), README done; fresh clone passed 2026-11-06 (4 commands, ~7 min cold). Demo video next.**
 
 Eval budget (Groq free tier, per model: 8k tokens/min, 200k tokens/day rolling 24 h, not in headers): a full golden-set
 run (~250k generator, ~234k judge) is planned as a multi-day run on one account (`--resume`); pace at 30 s per call.

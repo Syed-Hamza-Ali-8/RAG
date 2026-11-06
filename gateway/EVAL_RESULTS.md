@@ -1611,6 +1611,11 @@ read.
 project dependency, and an isolation test may not skip). What the browser does with the response is guaranteed by
 construction (text-only DOM writes, checked structurally) and by a browser check, not by an executed test.
 
+**Result (2026-11-06):** `tests/test_chat_isolation.py` **13/13** (11 probes, every live control holding,
+P1 and its mutation on c001 and c002). The five isolation suites together (ACL, admin, cache, dashboard, chat):
+**555/555**, 3 min 05 s, peak 808 MB, with nothing else from this project running except the idle fresh-clone stack.
+Full suite 807, smoke pass, mypy clean on `gateway/`, `scripts/`, `eval/`.
+
 ## Measurement notes
 
 Retrieval latency is noisy on this machine (WSL2, Docker Desktop, repo on `/mnt/d`). In the

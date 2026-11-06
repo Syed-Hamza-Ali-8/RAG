@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gateway</title>
+<style>
+  :root { --bg:#f7f7f5; --panel:#fff; --ink:#1d1d1b; --muted:#6b6b66; --line:#e3e2dd; --accent:#2f5d8a; --warn:#9a3b1f; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#171716; --panel:#212120; --ink:#ecebe6; --muted:#a3a29c; --line:#34332f; --accent:#7fa8d1; --warn:#e08a6a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
+  header h1 { margin:0; font-size:16px; font-weight:600; }
+  header .who { color:var(--muted); font-size:13px; }
+  main { max-width:760px; margin:0 auto; padding:20px 16px 40px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
+  .note { color:var(--muted); font-size:12px; }
+  form { display:flex; flex-wrap:wrap; gap:8px; align-items:end; }
+  label { display:flex; flex-direction:column; font-size:12px; color:var(--muted); gap:3px; }
+  input, textarea, button { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--ink); }
+  textarea { flex:1 1 100%; min-height:64px; resize:vertical; }
+  button { background:var(--accent); color:#fff; border-color:var(--accent); cursor:pointer; }
+  button.secondary { background:transparent; color:var(--ink); border-color:var(--line); }
+  button:disabled { opacity:.6; cursor:wait; }
+  .err { color:var(--warn); font-size:13px; min-height:1em; margin:8px 0 0; }
+  .turn { border-top:1px solid var(--line); padding:14px 0; }
+  .turn:first-child { border-top:0; }
+  .turn .q { font-weight:600; margin:0 0 6px; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .turn .a { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .turn ul { margin:8px 0 0; padding-left:18px; color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gateway</h1>
+  <div><span class="who" id="who"></span> <button class="secondary" id="signout" hidden>Sign out</button></div>
+</header>
+<main>
+  <section class="panel" id="signin-panel">
+    <p class="note">Demo only: this sign-in identifies a seeded user by tenant and email, with no password. A production
+      deployment uses the organisation's identity provider.</p>
+    <form id="signin">
+      <label>Tenant <input name="tenant" placeholder="tenant slug" required autocomplete="organization"></label>
+      <label>Email <input name="email" type="email" placeholder="email" required size="26" autocomplete="email"></label>
+      <button type="submit">Sign in</button>
+    </form>
+    <p class="err" id="signin-err"></p>
+  </section>
+
+  <section class="panel" id="ask-panel" hidden>
+    <form id="ask">
+      <textarea name="question" maxlength="2000" required placeholder="Ask a question about your organisation's documents"></textarea>
+      <button type="submit" id="ask-btn">Ask</button>
+    </form>
+    <p class="err" id="ask-err"></p>
+  </section>
+
+  <section class="panel" id="log-panel" hidden><div id="log"></div></section>
+</main>
+<script>
+(function () {
+  // Every value from the server or the user is written with textContent: nothing is ever parsed as markup.
+  const KEY = "gateway.chat.token";
+  const store = {
+    get() { try { return sessionStorage.getItem(KEY); } catch (e) { return null; } },
+    set(v) { try { sessionStorage.setItem(KEY, v); } catch (e) {} },
+    clear() { try { sessionStorage.removeItem(KEY); } catch (e) {} },
+  };
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+
+  function show(signedIn, label) {
+    $("signin-panel").hidden = signedIn;
+    $("ask-panel").hidden = !signedIn;
+    $("log-panel").hidden = !signedIn || !$("log").firstChild;
+    $("signout").hidden = !signedIn;
+    $("who").textContent = signedIn ? (label || "") : "";
+  }
+
+  function signOut(message) {
+    store.clear();
+    $("log").replaceChildren();
+    show(false);
+    $("signin-err").textContent = message || "";
+  }
+
+  // r is the parsed /v1/query response; only answer and citations are read. A refusal is rendered exactly as the
+  // API returns it, in the same element as any answer.
+  function render(question, r) {
+    const turn = el("div", "turn");
+    const q = el("p", "q");
+    q.textContent = question;
+    const a = el("p", "a");
+    a.textContent = r.answer;
+    turn.append(q, a);
+    if (r.citations.length) {
+      const list = el("ul");
+      for (const c of r.citations) {
+        const item = el("li");
+        item.textContent = c.document_title + (c.heading_path ? " — " + c.heading_path : "");
+        list.append(item);
+      }
+      turn.append(list);
+    }
+    $("log").prepend(turn);
+    $("log-panel").hidden = false;
+  }
+
+  $("signin").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const body = { tenant: f.get("tenant"), email: f.get("email") };
+    const res = await fetch("/v1/auth/token", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (!res.ok) { $("signin-err").textContent = "Sign-in failed (HTTP " + res.status + ")."; return; }
+    store.set((await res.json()).access_token);
+    $("signin-err").textContent = "";
+    show(true, body.email + " · " + body.tenant);
+  });
+
+  $("ask").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const field = e.target.elements.question;
+    const question = field.value.trim();
+    if (!question) return;
+    $("ask-btn").disabled = true;
+    $("ask-err").textContent = "";
+    try {
+      const res = await fetch("/v1/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + store.get() },
+        body: JSON.stringify({ question }),
+      });
+      if (res.status === 401) { signOut("Your session has ended. Please sign in again."); return; }
+      if (!res.ok) {
+        $("ask-err").textContent = res.status === 502
+          ? "No answer was produced: the model stopped before finishing (HTTP 502). Try again."
+          : "The question could not be answered right now (HTTP " + res.status + ").";
+        return;
+      }
+      render(question, await res.json());
+      field.value = "";
+    } catch (err) {
+      $("ask-err").textContent = "The server could not be reached.";
+    } finally {
+      $("ask-btn").disabled = false;
+    }
+  });
+
+  $("signout").addEventListener("click", () => signOut(""));
+  if (store.get()) show(true, "");
+})();
+</script>
+</body>
+</html>
