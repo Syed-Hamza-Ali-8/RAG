@@ -25,6 +25,11 @@
   button.secondary { background:transparent; color:var(--ink); border-color:var(--line); }
   button:disabled { opacity:.6; cursor:wait; }
   .err { color:var(--warn); font-size:13px; min-height:1em; margin:8px 0 0; }
+  .status { color:var(--muted); font-size:13px; min-height:1em; margin:8px 0 0; }
+  .status:not(:empty)::before { content:""; display:inline-block; width:10px; height:10px; margin-right:7px;
+    border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; vertical-align:-1px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .status:not(:empty)::before { animation:none; } }
   .turn { border-top:1px solid var(--line); padding:14px 0; }
   .turn:first-child { border-top:0; }
   .turn .q { font-weight:600; margin:0 0 6px; white-space:pre-wrap; overflow-wrap:anywhere; }
@@ -54,6 +59,7 @@
       <textarea name="question" maxlength="2000" required placeholder="Ask a question about your organisation's documents"></textarea>
       <button type="submit" id="ask-btn">Ask</button>
     </form>
+    <p class="status" id="status" aria-live="polite"></p>
     <p class="err" id="ask-err"></p>
   </section>
 
@@ -86,6 +92,14 @@
     $("signin-err").textContent = message || "";
   }
 
+  // The heading path usually starts with the document title ("Leave Policy > Frequently Asked Questions"); show
+  // only what it adds after the title, and nothing when it is the title itself.
+  function section(title, path) {
+    if (!path || path === title) return "";
+    const rest = path.startsWith(title + " > ") ? path.slice(title.length + 3) : path;
+    return " — " + rest;
+  }
+
   // r is the parsed /v1/query response; only answer and citations are read. A refusal is rendered exactly as the
   // API returns it, in the same element as any answer.
   function render(question, r) {
@@ -99,7 +113,7 @@
       const list = el("ul");
       for (const c of r.citations) {
         const item = el("li");
-        item.textContent = c.document_title + (c.heading_path ? " — " + c.heading_path : "");
+        item.textContent = "[" + c.label + "] " + c.document_title + section(c.document_title, c.heading_path);
         list.append(item);
       }
       turn.append(list);
@@ -127,7 +141,10 @@
     const question = field.value.trim();
     if (!question) return;
     $("ask-btn").disabled = true;
+    $("ask-btn").textContent = "Asking…";
     $("ask-err").textContent = "";
+    $("status").textContent = "Looking through your documents…";
+    e.target.setAttribute("aria-busy", "true");
     try {
       const res = await fetch("/v1/query", {
         method: "POST",
@@ -147,6 +164,9 @@
       $("ask-err").textContent = "The server could not be reached.";
     } finally {
       $("ask-btn").disabled = false;
+      $("ask-btn").textContent = "Ask";
+      $("status").textContent = "";
+      e.target.removeAttribute("aria-busy");
     }
   });
 
