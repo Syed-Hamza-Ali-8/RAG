@@ -1603,8 +1603,9 @@ replaced by "Contractors follow the terms in their contracts", verified to occur
 reached the model, must be readable by the asker, the ACL suite's P1 rule. Chosen strings are a proxy; readability of
 what was cited and retrieved is the property itself, and a well-chosen string can still miss a leak. It is the same
 class of weakness as the empty-graph false pass: a check that looks at a stand-in for the property can pass while the
-property fails. Live control: with the ACL predicate reduced to tenant scoping, the employee's response must cite a
-chunk the employee may not read.
+property fails. Live control: with the ACL predicate reduced to tenant scoping (c001), or removed entirely for the cross-tenant
+c002 (the ACL suite's mutant rule; corrected before its first run), the response must cite a chunk the asker may not
+read.
 
 **Not covered by the suite, stated in advance:** the page's JavaScript is not executed in tests (Node is not a
 project dependency, and an isolation test may not skip). What the browser does with the response is guaranteed by
