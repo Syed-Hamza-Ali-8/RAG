@@ -1589,6 +1589,23 @@ isolation suites run stubs, never a real model (`tests/test_acl_isolation.py`, m
 contain none of the HR-only content, while HR asking the same gets it. The refusal path is c003's: an ACL refusal
 must equal a genuinely unanswerable question's, byte for byte.
 
+**c001 was wrong, and probes-before-code did not catch it (recorded 2026-11-06).** c001 passed review and was
+committed before any chat code, and on its first run it failed: the employee's answer held "Priya Raman", one of
+its two "HR-only" strings. It was not a leak. The employee's query retrieved exactly five chunks, all public; the
+name is also in `public-company-overview#0`, which every role may read, and the quoting stub quoted it from there.
+The string had been taken from the HR leave-policy chunk without checking that it appears only in restricted
+content (it is in six chunks, one public). **Committing a probe before the code it tests does not guarantee the
+probe tests what it claims.** The fix (user-approved under invariant 11; stricter, not easier): the string is
+replaced by "Contractors follow the terms in their contracts", verified to occur only in `hr-leave-policy#0`
+(HR-only). c002 keeps "Priya Raman": its asker is a globex user, and no globex chunk contains the name.
+
+**P1 added to c001 and c002 (user-approved):** every chunk the response cites, and every chunk the audit log says
+reached the model, must be readable by the asker, the ACL suite's P1 rule. Chosen strings are a proxy; readability of
+what was cited and retrieved is the property itself, and a well-chosen string can still miss a leak. It is the same
+class of weakness as the empty-graph false pass: a check that looks at a stand-in for the property can pass while the
+property fails. Live control: with the ACL predicate reduced to tenant scoping, the employee's response must cite a
+chunk the employee may not read.
+
 **Not covered by the suite, stated in advance:** the page's JavaScript is not executed in tests (Node is not a
 project dependency, and an isolation test may not skip). What the browser does with the response is guaranteed by
 construction (text-only DOM writes, checked structurally) and by a browser check, not by an executed test.
