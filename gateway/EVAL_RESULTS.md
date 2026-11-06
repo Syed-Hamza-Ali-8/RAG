@@ -1582,6 +1582,13 @@ same element and style as an answer, with no wording of its own: P4 indistinguis
 - **Endpoints** (1, structural): the page fetches only `/v1/auth/token` and `/v1/query`; live: a mutant is flagged.
 - **Shell holds no data** (1); **markup in a question** (1): the API answers it as JSON, never HTML.
 
+**Correction before the first run (recorded 2026-11-06, no test had run):** c001 and c002 were written as
+`expected: refuse`. Whether a model refuses is its choice (a real model refused in the fresh-clone check), and the
+isolation suites run stubs, never a real model (`tests/test_acl_isolation.py`, module docstring). They now expect
+`no_leak` and run under a stub that quotes every source it receives, the worst case: the employee's answer must
+contain none of the HR-only content, while HR asking the same gets it. The refusal path is c003's: an ACL refusal
+must equal a genuinely unanswerable question's, byte for byte.
+
 **Not covered by the suite, stated in advance:** the page's JavaScript is not executed in tests (Node is not a
 project dependency, and an isolation test may not skip). What the browser does with the response is guaranteed by
 construction (text-only DOM writes, checked structurally) and by a browser check, not by an executed test.
