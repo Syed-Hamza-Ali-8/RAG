@@ -91,7 +91,7 @@ async def test_shell_loads_pinned_cdn_assets_and_no_data(client: httpx.AsyncClie
     r = await client.get("/dashboard")
     assert r.status_code == 200
     assert "htmx.org@1.9.12" in r.text and "chart.js@4.4.1" in r.text
-    assert "Demo only" in r.text  # correction H: the dev issuer is labelled
+    assert "Demo sign-in: no password" in r.text  # correction H: the dev issuer is labelled
 
 
 def test_question_visibility_rule() -> None:

@@ -21,5 +21,5 @@ async def test_chat_page_is_static_html(
         r = await client.get("/chat")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
     assert (
-        'fetch("/v1/query"' in r.text and "Demo only" in r.text
+        'fetch("/v1/query"' in r.text and "Demo sign-in: no password" in r.text
     )  # correction H: the demo issuer is labelled

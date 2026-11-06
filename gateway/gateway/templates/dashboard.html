@@ -41,6 +41,9 @@
   button { background:var(--accent); color:#fff; border-color:var(--accent); cursor:pointer; }
   button.secondary { background:transparent; color:var(--ink); border-color:var(--line); }
   .err { color:var(--warn); font-size:13px; min-height:1em; }
+  .signin-card h2 { margin:0 0 4px; font-size:18px; font-weight:600; }
+  .signin-card .sub { margin:0 0 14px; color:var(--muted); font-size:14px; }
+  .signin-card .demo-note { margin:12px 0 0; color:var(--muted); font-size:14px; }
   canvas { max-height:260px; }
 </style>
 </head>
@@ -50,17 +53,16 @@
   <div><span class="who" id="who"></span> <button class="secondary" id="signout" hidden>Sign out</button></div>
 </header>
 <main>
-  <section class="panel" id="signin-panel">
-    <h2>Sign in (demo issuer)</h2>
-    <p class="note">Demo only: this uses the development token issuer, which identifies a seeded user by tenant and
-      email with no password. A production deployment uses the client's identity provider. Only tenant admins can
-      see dashboard data, and only for their own tenant.</p>
+  <section class="panel signin-card" id="signin-panel">
+    <h2>Sign in to Gateway</h2>
+    <p class="sub">Only tenant admins can see dashboard data, for their own tenant.</p>
     <form class="signin" id="signin">
       <label>Tenant <input name="tenant" placeholder="tenant slug" required autocomplete="organization"></label>
       <label>Email <input name="email" type="email" placeholder="admin email" required size="26" autocomplete="email"></label>
       <button type="submit">Sign in</button>
     </form>
     <p class="err" id="signin-err"></p>
+    <p class="demo-note">Demo sign-in: no password. In production, Gateway uses your organisation's single sign-on.</p>
   </section>
 
   <div id="data" hidden>

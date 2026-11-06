@@ -25,6 +25,9 @@
   button.secondary { background:transparent; color:var(--ink); border-color:var(--line); }
   button:disabled { opacity:.6; cursor:wait; }
   .err { color:var(--warn); font-size:13px; min-height:1em; margin:8px 0 0; }
+  .signin-card h2 { margin:0 0 4px; font-size:18px; font-weight:600; }
+  .signin-card .sub { margin:0 0 14px; color:var(--muted); font-size:14px; }
+  .signin-card .demo-note { margin:12px 0 0; color:var(--muted); font-size:14px; }
   .status { color:var(--muted); font-size:13px; min-height:1em; margin:8px 0 0; }
   .status:not(:empty)::before { content:""; display:inline-block; width:10px; height:10px; margin-right:7px;
     border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; vertical-align:-1px; }
@@ -43,15 +46,15 @@
   <div><span class="who" id="who"></span> <button class="secondary" id="signout" hidden>Sign out</button></div>
 </header>
 <main>
-  <section class="panel" id="signin-panel">
-    <p class="note">Demo only: this sign-in identifies a seeded user by tenant and email, with no password. A production
-      deployment uses the organisation's identity provider.</p>
+  <section class="panel signin-card" id="signin-panel">
+    <h2>Sign in to Gateway</h2>
     <form id="signin">
       <label>Tenant <input name="tenant" placeholder="tenant slug" required autocomplete="organization"></label>
       <label>Email <input name="email" type="email" placeholder="email" required size="26" autocomplete="email"></label>
       <button type="submit">Sign in</button>
     </form>
     <p class="err" id="signin-err"></p>
+    <p class="demo-note">Demo sign-in: no password. In production, Gateway uses your organisation's single sign-on.</p>
   </section>
 
   <section class="panel" id="ask-panel" hidden>
